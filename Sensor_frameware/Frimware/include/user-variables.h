@@ -57,7 +57,7 @@ const String device_name = "HIGrow"; // Can be changed, but not necessary, as it
 #define uS_TO_S_FACTOR 1000000ULL //Conversion factor for micro seconds to seconds
 #define TIME_TO_SLEEP  10       //Time ESP32 will go to sleep (in seconds)
 
-const char broker[] = "143.198.146.87";
+const char broker[] = "146.190.117.90";
 int        port     = 1883;
 const char mqttuser[] = ""; //add eventual mqtt username
 const char mqttpass[] = ""; //add eventual mqtt password
