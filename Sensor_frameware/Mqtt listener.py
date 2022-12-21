@@ -16,7 +16,7 @@ def on_message(client, userdata, message):
 
 client = mqtt.Client()
 client.on_message = on_message
-client.connect("143.198.146.87", 1883)
+client.connect("146.190.117.90", 1883)
 client.subscribe("HIGrow/#")
 client.loop_start()
 
