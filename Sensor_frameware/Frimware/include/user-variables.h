@@ -41,11 +41,11 @@ String plant_name = "Padron_1";
 int plantValveNo = 1;
 
 // define your SSID's, and remember to fill out variable ssidArrNo with the number of your SSID's
-String ssidArr[] = {"Name_Network_Here","Enterprise-pro", "Enterprise_EXT", "Enterprise_EXTN", "Enterprise" };
+String ssidArr[] = {"Fly in the sky 2.4g","Enterprise-pro", "Enterprise_EXT", "Enterprise_EXTN", "Enterprise" };
 int ssidArrNo = 5;
 
 const char* ssid = ""; // no need to fill in
-const char* password = "Password_Network_Here";
+const char* password = "11335577";
 const char* ntpServer = "pool.ntp.org";
 
 // Off-sets for time, and summertime. each hour is 3.600 seconds.
@@ -55,7 +55,7 @@ const long  gmtOffset_sec = 10800;
 const String device_name = "HIGrow"; // Can be changed, but not necessary, as it will give no added value.
 
 #define uS_TO_S_FACTOR 1000000ULL //Conversion factor for micro seconds to seconds
-#define TIME_TO_SLEEP  10       //Time ESP32 will go to sleep (in seconds)
+#define TIME_TO_SLEEP  300       //Time ESP32 will go to sleep (in seconds)
 
 const char broker[] = "146.190.117.90";
 int        port     = 1883;
