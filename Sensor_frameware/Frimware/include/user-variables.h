@@ -23,8 +23,8 @@ const bool USE_18B20_TEMP_SENSOR = true;
 // By doing this you will get the same readout for each unit. Replace the value below for the dry condition, and the 100% humid condition, and you are done.
 
 // Soil defaults - change them to your calibration data
-int soil_min = 1535;
-int soil_max = 3300;
+int soil_min = 1600;
+int soil_max = 3419;
 bool calibrate_soil = false;
 
 // Salt/Fertilizer recommandation break points. You can change these according to your own calibration measurements.
@@ -41,11 +41,11 @@ String plant_name = "Padron_1";
 int plantValveNo = 1;
 
 // define your SSID's, and remember to fill out variable ssidArrNo with the number of your SSID's
-String ssidArr[] = {"Fly in the sky 2.4g","Enterprise-pro", "Enterprise_EXT", "Enterprise_EXTN", "Enterprise" };
-int ssidArrNo = 5;
+String ssidArr[] = {"Enterprise-pro", "Enterprise_EXT", "Enterprise_EXTN", "Enterprise" };
+int ssidArrNo = 4;
 
 const char* ssid = ""; // no need to fill in
-const char* password = "11335577";
+const char* password = "Passowrd";
 const char* ntpServer = "pool.ntp.org";
 
 // Off-sets for time, and summertime. each hour is 3.600 seconds.
