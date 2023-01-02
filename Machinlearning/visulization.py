@@ -4,7 +4,7 @@ from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 
 
-data = pd.read_csv("C:/Users/zerox/Downloads/data1.csv")
+data = pd.read_csv("........../data1.csv")
 
 
 data = data.dropna() 
