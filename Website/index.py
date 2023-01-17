@@ -139,16 +139,37 @@ accordion = html.Div(
                 [
                     html.Div(
                         children=[
-                            html.Div(children='''
-                                    Choice your control mode
-                                ''',
-                                     style={'fontWeight': 'bold'}),
-                            daq.BooleanSwitch(
-                                id='switch',
-                                on=True,
-                                style={'float': 'left'}
+                            html.Div(children='Choice your control mode', style={'fontWeight': 'bold'}),
+                            html.Div(
+                                children=[
+                                    daq.BooleanSwitch(
+                                        id='switch1',
+                                        on=False,
+
+                                        style={'float': 'left'}
+                                    ),
+                                    html.Label(id='label1', style={'fontSize': '16px'}),
+
+                                ],
+                                style={'padding': '20px'}
                             ),
-                            html.Label(id='label', style={'fontSize': '16px'})
+                            html.Div(
+                                children=[
+                                    html.Div(children='Control Pump', style={'fontWeight': 'bold'}),
+                                    dcc.Dropdown(
+                                        id='switch2',
+                                        options=[
+                                            {'label': 'On', 'value': 'on'},
+                                            {'label': 'Off', 'value': 'off'}
+                                        ],
+                                        value='off',
+                                        style={'float': 'left'},
+                                        disabled=True
+                                    ),
+                                    html.Label(id='label2', style={'fontSize': '16px'}),
+                                ],
+                                style={'padding': '20px'}
+                            ),
                         ],
                         style={
                             'borderRadius': '14px',
@@ -255,14 +276,32 @@ def display_confirm(valueCategory, valueDeviceName):
 
 # for switch  auto / manual mode
 @app.callback(
-    Output('label', 'children'),
-    [Input('switch', 'on')]
+    Output('label1', 'children'),
+    [Input('switch1', 'on')]
 )
-def update_label(switch_on):
-    if switch_on:
-        return "Auto mode"
-    else:
+def update_label1(switch1_on):
+    if switch1_on:
         return "Manual mode"
+    else:
+        return "Auto mode"
+# for dropdown on / off
+@app.callback(
+    Output('label2', 'children'),
+    [Input('switch2', 'value')]
+)
+def update_label2(switch2_value):
+    return switch2_value
+
+
+@app.callback(
+    Output('switch2', 'disabled'),
+    [Input('switch1', 'on')]
+)
+def update_switch2(switch1_on):
+    if switch1_on:
+        return False
+    else:
+        return True
 
 
 # for change category
