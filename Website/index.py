@@ -253,14 +253,7 @@ def display_confirm(valueCategory, valueDeviceName):
         return False
     return False
 
-
-# for change category
-@app.callback(
-    Output('dd-output-container', 'children'),
-    Input('dd_deviceName', 'value'),
-    Input('dd_category', 'value'),
-    Input('confirm-danger', 'submit_n_clicks')
-)
+# for switch  auto / manual mode
 @app.callback(
     Output('label', 'children'),
     [Input('switch', 'on')]
@@ -270,6 +263,16 @@ def update_label(switch_on):
         return "Auto mode"
     else:
         return "Manual mode"
+
+
+# for change category
+@app.callback(
+    Output('dd-output-container', 'children'),
+    Input('dd_deviceName', 'value'),
+    Input('dd_category', 'value'),
+    Input('confirm-danger', 'submit_n_clicks')
+)
+
 def update_output(valueName, valueCate, submit_n_clicks):
     if submit_n_clicks:
         db = sqlite3.connect('messages.db')
