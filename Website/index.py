@@ -1,4 +1,5 @@
-# Import necessary libraries 
+# Import necessary libraries
+import dash_daq as daq
 import dash
 import dash_bootstrap_components as dbc
 from dash import html, dcc, dash_table
@@ -8,7 +9,6 @@ import plotly.express as px
 import pandas as pd
 from dash_bootstrap_templates import load_figure_template
 
-
 # define app
 dbc_css = ("https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates@V1.0.2/dbc.min.css")
 app = dash.Dash(__name__,
@@ -17,42 +17,41 @@ app = dash.Dash(__name__,
                 suppress_callback_exceptions=True)
 load_figure_template("COSMO")
 
-
-
-
-
 # create connect to database
 db = sqlite3.connect('messages.db')
 cursor = db.cursor()
-#import data and create graph temp
+# import data and create graph temp
 dd = pd.read_sql_query(
     "SELECT AVG(temp) as Temperature , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",
     db)
 FigTemp = px.line(dd, x='Hour', y='Temperature', title='Average Temperatures')
 
-#import data and create graph humid
+# import data and create graph humid
 dd = pd.read_sql_query(
     "SELECT AVG(humid) as Humidity , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",
     db)
 FigHumid = px.line(dd, x='Hour', y='Humidity', title='Average Humidity')
 
-#import data and create graph salt
+# import data and create graph salt
 dd = pd.read_sql_query(
     "SELECT AVG(salt) as Salinity , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",
     db)
 FigSalt = px.line(dd, x='Hour', y='Salinity', title='Average Salinity')
 
-#create table if not avaible and update category for all new sensors
+# create table if not avaible and update category for all new sensors
 cursor.execute("CREATE TABLE IF NOT EXISTS sensors (device_name text, category text, UNIQUE(device_name))")
-cursor.execute("INSERT OR IGNORE INTO sensors(device_name) SELECT Min(device_name) AS device_name  FROM   messages GROUP BY device_name")
+cursor.execute(
+    "INSERT OR IGNORE INTO sensors(device_name) SELECT Min(device_name) AS device_name  FROM   messages GROUP BY device_name")
 cursor.execute("UPDATE sensors SET category = 'Not Selected' WHERE category IS NULL")
 db.commit()
 df = pd.read_sql_query("SELECT Min(device_name) AS device_name, category FROM sensors GROUP BY device_name", db)
-dn = pd.read_sql_query("SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date > date_now) GROUP BY device_name", db)
+dn = pd.read_sql_query(
+    "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date > date_now) GROUP BY device_name",
+    db)
 db.close()
 
 
-#method get average for temp/humid/salt last 10 min
+# method get average for temp/humid/salt last 10 min
 def get_record(mesure):
     db = sqlite3.connect('messages.db')
     cursor = db.cursor()
@@ -74,7 +73,7 @@ def get_record(mesure):
     return (mesureN[0][0])
 
 
-#method create cards for average last 10 min
+# method create cards for average last 10 min
 def create_card(title, content, color_card):
     card = dbc.Card(
         [
@@ -90,7 +89,6 @@ def create_card(title, content, color_card):
 humidity_card = create_card("Humidity", str(get_record("humid")) + "%", "primary")
 salinity_card = create_card("Soil Salinity", str(get_record("salt")) + "µS/cm", "success")
 temp_card = create_card("Temperature", str(get_record("temp")) + "°C", "danger")
-
 
 # define devices deactivated / update category devices / control water pump
 accordion = html.Div(
@@ -109,8 +107,8 @@ accordion = html.Div(
                             'textAlign': 'center'
                         },
                         style_header={
-                            'color' : '#2373cc',
-                            'background' : '#e9f2fc',
+                            'color': '#2373cc',
+                            'background': '#e9f2fc',
                             'fontWeight': 'bold',
                             'textAlign': 'center'
                         },
@@ -121,10 +119,13 @@ accordion = html.Div(
             dbc.AccordionItem(
                 [
                     html.P("Select Device Name"),
-                    dcc.Dropdown(id='dd_deviceName', options=[{'label': i, 'value': i} for i in df['device_name'].unique()], value='Not Selected', clearable=False),
+                    dcc.Dropdown(id='dd_deviceName',
+                                 options=[{'label': i, 'value': i} for i in df['device_name'].unique()],
+                                 value='Not Selected', clearable=False),
                     html.Br(),
                     html.P("Select Category"),
-                    dcc.Dropdown(id='dd_category', options=['Not Selected', 'Sikkry', 'Khalas'], value='Not Selected', clearable=False, searchable=False),
+                    dcc.Dropdown(id='dd_category', options=['Not Selected', 'Sikkry', 'Khalas'], value='Not Selected',
+                                 clearable=False, searchable=False),
                     html.Br(),
                     dcc.ConfirmDialog(
                         id='confirm-danger',
@@ -137,10 +138,23 @@ accordion = html.Div(
             dbc.AccordionItem(
                 [
                     html.Div(
-                        [
-
-
-                        ]
+                        children=[
+                            html.Div(children='''
+                                    Choice your control mode
+                                ''',
+                                     style={'fontWeight': 'bold'}),
+                            daq.BooleanSwitch(
+                                id='switch',
+                                on=True,
+                                style={'float': 'left'}
+                            ),
+                            html.Label(id='label', style={'fontSize': '16px'})
+                        ],
+                        style={
+                            'borderRadius': '14px',
+                            'backgroundColor': '#e9f2fc',
+                            'padding': '20px'
+                        }
                     )
                 ],
                 title="Control Pump",
@@ -150,47 +164,49 @@ accordion = html.Div(
     className="dbc dbc-row-selectable"
 )
 
+graphRow1 = dbc.Row([dbc.Col(id='humidity_card', children=[humidity_card], align="center", md=3),
+                     dbc.Col(id='temp_card', children=[temp_card], md=3),
+                     dbc.Col(id='salinity_card', children=[salinity_card], md=3), ], justify="center")
+graphRow2 = dbc.Row([dbc.Col(dcc.Graph(id="graphHumid", figure=FigHumid), md=6),
+                     dbc.Col(dcc.Graph(id="graphSalt", figure=FigSalt), md=6)])
+graphRow3 = dbc.Row(
+    [dbc.Col(dcc.Graph(id="graphTemp", figure=FigTemp), md=6), dbc.Col(id='list_group', children=[accordion], md=6)])
 
-
-graphRow1 = dbc.Row([dbc.Col(id='humidity_card', children=[humidity_card], align="center", md=3), dbc.Col(id='temp_card', children=[temp_card], md=3), dbc.Col(id='salinity_card', children=[salinity_card], md=3),],justify="center")
-graphRow2 = dbc.Row([dbc.Col(dcc.Graph(id="graphHumid",figure=FigHumid), md=6), dbc.Col(dcc.Graph(id="graphSalt",figure=FigSalt), md=6)])
-graphRow3 = dbc.Row([dbc.Col(dcc.Graph(id="graphTemp",figure=FigTemp), md=6), dbc.Col(id='list_group', children=[accordion], md=6)])
-
-#define navbar
+# define navbar
 nav = dbc.NavbarSimple(
     children=[
         dbc.NavItem(dbc.Button(
-                                "Open Devices List",
-                                id="open-offcanvas-scrollable",
-                                n_clicks=0,
-                    )
+            "Open Devices List",
+            id="open-offcanvas-scrollable",
+            n_clicks=0,
+        )
         ),
         html.Div([dbc.Offcanvas(
-                   dash_table.DataTable(
-                        id='table-deviceName-category',
-                        data=df.to_dict('records'),
-                        columns=[
-                            {'id': 'device_name', 'name': 'Device Name'},
-                            {'id': 'category', 'name': 'Category'},
-                        ],
-                        sort_action='native',
-                        style_as_list_view=True,
-                        style_cell={
-                            'padding': '5px',
-                            'textAlign': 'center'
-                        },
-                        style_header={
-                            'color' : '#2373cc',
-                            'background' : '#e9f2fc',
-                            'fontWeight': 'bold',
-                            'textAlign': 'center'
-                        },
-                    ),
-                    id="offcanvas-scrollable",
-                    scrollable=True,
-                    title="Devices List",
-                    is_open=False,
-                    )
+            dash_table.DataTable(
+                id='table-deviceName-category',
+                data=df.to_dict('records'),
+                columns=[
+                    {'id': 'device_name', 'name': 'Device Name'},
+                    {'id': 'category', 'name': 'Category'},
+                ],
+                sort_action='native',
+                style_as_list_view=True,
+                style_cell={
+                    'padding': '5px',
+                    'textAlign': 'center'
+                },
+                style_header={
+                    'color': '#2373cc',
+                    'background': '#e9f2fc',
+                    'fontWeight': 'bold',
+                    'textAlign': 'center'
+                },
+            ),
+            id="offcanvas-scrollable",
+            scrollable=True,
+            title="Devices List",
+            is_open=False,
+        )
         ])
     ],
     brand="Smart Watring System",
@@ -198,8 +214,7 @@ nav = dbc.NavbarSimple(
     dark=True
 )
 
-
-#define layout website
+# define layout website
 app.layout = html.Div([
     dcc.Location(id='url', refresh=False),
     nav,
@@ -213,7 +228,7 @@ app.layout = html.Div([
 ])
 
 
-#for device list
+# for device list
 @app.callback(
     Output("offcanvas-scrollable", "is_open"),
     Input("open-offcanvas-scrollable", "n_clicks"),
@@ -231,9 +246,9 @@ def toggle_offcanvas_scrollable(n1, is_open):
     Input('dd_category', 'value'),
     Input('dd_deviceName', 'value')
 )
-def display_confirm(valueCategory,valueDeviceName):
-    if valueDeviceName != 'Not Selected': #for confirm select device
-        if valueCategory != 'Not Selected': #for confirm select category
+def display_confirm(valueCategory, valueDeviceName):
+    if valueDeviceName != 'Not Selected':  # for confirm select device
+        if valueCategory != 'Not Selected':  # for confirm select category
             return True
         return False
     return False
@@ -246,7 +261,16 @@ def display_confirm(valueCategory,valueDeviceName):
     Input('dd_category', 'value'),
     Input('confirm-danger', 'submit_n_clicks')
 )
-def update_output(valueName,valueCate,submit_n_clicks):
+@app.callback(
+    Output('label', 'children'),
+    [Input('switch', 'on')]
+)
+def update_label(switch_on):
+    if switch_on:
+        return "Auto mode"
+    else:
+        return "Manual mode"
+def update_output(valueName, valueCate, submit_n_clicks):
     if submit_n_clicks:
         db = sqlite3.connect('messages.db')
         cursor = db.cursor()
@@ -256,8 +280,7 @@ def update_output(valueName,valueCate,submit_n_clicks):
         return f'You have select category {valueCate} for device {valueName}'
 
 
-
-
 # Run the app on all port server
 if __name__ == '__main__':
-    app.run_server(host='0.0.0.0',port='80', debug=True)
+    app.run_server(host='0.0.0.0', port='80', debug=True)
+    app.run_server(debug=True)
