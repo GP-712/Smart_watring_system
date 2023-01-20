@@ -3,6 +3,7 @@ import sqlite3
 import json
 from queue import Queue
 import os.path
+from datetime import date
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 db_path = os.path.join(BASE_DIR, "messages.db")
@@ -28,7 +29,7 @@ while True:
         data = json.loads(payload)
         plant_data = data['sensor']
         device_name = plant_data['HIGrow']
-        date = plant_data['date']
+        date_t = date.today()
         time = plant_data['time']
         temp = plant_data['temp']
         humid = plant_data['humid']
@@ -43,6 +44,6 @@ while True:
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS messages (device_name text, date text, time text, temp real, humid real, soil real, soil_temp real, salt real, bat real, batcharge text, wifi_ssid text)''')
         cursor.execute("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                       (device_name, date, time, temp, humid, soil, soil_temp, salt, bat, batcharge, wifi_ssid))
+                       (device_name, date_t, time, temp, humid, soil, soil_temp, salt, bat, batcharge, wifi_ssid))
         conn.commit()
         conn.close()
