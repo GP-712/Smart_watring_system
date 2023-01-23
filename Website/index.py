@@ -5,6 +5,7 @@ import dash_bootstrap_components as dbc
 from dash import html, dcc, dash_table
 from dash.dependencies import Input, Output, State
 import sqlite3
+import datetime
 import plotly.express as px
 import pandas as pd
 from dash_bootstrap_templates import load_figure_template
@@ -20,6 +21,7 @@ load_figure_template("COSMO")
 # create connect to database
 db = sqlite3.connect('messages.db')
 cursor = db.cursor()
+conn = sqlite3.connect('pump.db')
 # import data and create graph temp
 dd = pd.read_sql_query(
     "SELECT AVG(temp) as Temperature , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",
@@ -49,7 +51,8 @@ dn = pd.read_sql_query(
     "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date > date_now) GROUP BY device_name",
     db)
 db.close()
-
+conn.execute("DROP TABLE IF EXISTS controls")
+conn.execute('''CREATE TABLE controls (control_type TEXT, pump_state TEXT, datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
 
 # method get average for temp/humid/salt last 10 min
 def get_record(mesure):
@@ -139,43 +142,21 @@ accordion = html.Div(
                 [
                     html.Div(
                         children=[
-                            html.Div(children='Choice your control mode', style={'fontWeight': 'bold'}),
-                            html.Div(
-                                children=[
-                                    daq.BooleanSwitch(
-                                        id='switch1',
-                                        on=False,
-
-                                        style={'float': 'left'}
-                                    ),
-                                    html.Label(id='label1', style={'fontSize': '16px'}),
-
-                                ],
-                                style={'padding': '20px'}
-                            ),
-                            html.Div(
-                                children=[
-                                    html.Div(children='Control Pump', style={'fontWeight': 'bold'}),
-                                    dcc.Dropdown(
-                                        id='switch2',
-                                        options=[
-                                            {'label': 'On', 'value': 'on'},
-                                            {'label': 'Off', 'value': 'off'}
-                                        ],
-                                        value='off',
-                                        style={'float': 'left'},
-                                        disabled=True
-                                    ),
-                                    html.Label(id='label2', style={'fontSize': '16px'}),
-                                ],
-                                style={'padding': '20px'}
+                            html.Div([
+                                html.Label(['Choice control pump'], style={'fontWeight': 'bold'}),
+                                dcc.RadioItems(
+                                    id='pump-control',
+                                    options=[
+                                        {'label': ' Auto', 'value': 'auto'},
+                                        {'label': ' ON', 'value': 'on'},
+                                        {'label': ' OFF', 'value': 'off'}
+                                    ],
+                                    value='auto',
+                                    labelStyle={'display': 'block'}
+                                )
+                            ]
                             ),
                         ],
-                        style={
-                            'borderRadius': '14px',
-                            'backgroundColor': '#e9f2fc',
-                            'padding': '20px'
-                        }
                     )
                 ],
                 title="Control Pump",
@@ -248,7 +229,19 @@ app.layout = html.Div([
     html.Br(),
 ])
 
+def insert_control_data(control_type, pump_state):
+    conn = sqlite3.connect('pump.db')
+    conn.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", (control_type, pump_state,datetime.now()))
+    conn.commit()
+    print("Data inserted successfully")
+    conn.close()
 
+
+@app.callback(
+    Output('pump-control', 'value'),
+    [Input('pump-control', 'value')])
+def record_control_data(value):
+    insert_control_data(value, datetime.datetime.now())
 # for device list
 @app.callback(
     Output("offcanvas-scrollable", "is_open"),
@@ -274,34 +267,7 @@ def display_confirm(valueCategory, valueDeviceName):
         return False
     return False
 
-# for switch  auto / manual mode
-@app.callback(
-    Output('label1', 'children'),
-    [Input('switch1', 'on')]
-)
-def update_label1(switch1_on):
-    if switch1_on:
-        return "Manual mode"
-    else:
-        return "Auto mode"
-# for dropdown on / off
-@app.callback(
-    Output('label2', 'children'),
-    [Input('switch2', 'value')]
-)
-def update_label2(switch2_value):
-    return switch2_value
 
-
-@app.callback(
-    Output('switch2', 'disabled'),
-    [Input('switch1', 'on')]
-)
-def update_switch2(switch1_on):
-    if switch1_on:
-        return False
-    else:
-        return True
 
 
 # for change category
@@ -325,4 +291,4 @@ def update_output(valueName, valueCate, submit_n_clicks):
 # Run the app on all port server
 if __name__ == '__main__':
     app.run_server(host='0.0.0.0', port='80', debug=True)
-    app.run_server(debug=True)
+
