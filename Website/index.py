@@ -22,6 +22,8 @@ load_figure_template("COSMO")
 db = sqlite3.connect('messages.db')
 cursor = db.cursor()
 conn = sqlite3.connect('pump.db')
+cursor2 = conn.cursor()
+
 # import data and create graph temp
 dd = pd.read_sql_query(
     "SELECT AVG(temp) as Temperature , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",
@@ -50,10 +52,22 @@ df = pd.read_sql_query("SELECT Min(device_name) AS device_name, category FROM se
 dn = pd.read_sql_query(
     "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date > date_now) GROUP BY device_name",
     db)
-db.close()
-conn.execute("DROP TABLE IF EXISTS controls")
-conn.execute('''CREATE TABLE controls (control_type TEXT, pump_state TEXT, datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+cursor2.execute("CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state TEXT, datetime TEXT)")
+conn.commit()
+result = cursor2.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1")
 
+if result == 'Auto':
+    type_control='auto'
+elif result == 'Manually':
+    result2 = cursor2.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1")
+    if result2 == 'on':
+        type_control = 'on'
+    else:
+        type_control = 'off'
+else:
+    type_control = 'null'
+db.close()
+conn.close()
 # method get average for temp/humid/salt last 10 min
 def get_record(mesure):
     db = sqlite3.connect('messages.db')
@@ -144,6 +158,7 @@ accordion = html.Div(
                         children=[
                             html.Div([
                                 html.Label(['Choice control pump'], style={'fontWeight': 'bold'}),
+
                                 dcc.RadioItems(
                                     id='pump-control',
                                     options=[
@@ -151,7 +166,7 @@ accordion = html.Div(
                                         {'label': ' ON', 'value': 'on'},
                                         {'label': ' OFF', 'value': 'off'}
                                     ],
-                                    value='auto',
+                                    value=type_control,
                                     labelStyle={'display': 'block'}
                                 )
                             ]
@@ -231,7 +246,11 @@ app.layout = html.Div([
 
 def insert_control_data(control_type, pump_state):
     conn = sqlite3.connect('pump.db')
-    conn.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", (control_type, pump_state,datetime.now()))
+    cursor = conn.cursor()
+    if control_type == 'auto':
+        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', 'off', datetime.datetime.now()))
+    else:
+        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", (control_type, pump_state, datetime.datetime.now()))
     conn.commit()
     print("Data inserted successfully")
     conn.close()
@@ -240,8 +259,12 @@ def insert_control_data(control_type, pump_state):
 @app.callback(
     Output('pump-control', 'value'),
     [Input('pump-control', 'value')])
-def record_control_data(value):
-    insert_control_data(value, datetime.datetime.now())
+def record_control_data(valueControl):
+    if valueControl == 'auto':
+        insert_control_data(valueControl, valueControl)
+    elif (valueControl == 'off') or (valueControl == 'on'):
+        insert_control_data('Manually', valueControl)
+
 # for device list
 @app.callback(
     Output("offcanvas-scrollable", "is_open"),
