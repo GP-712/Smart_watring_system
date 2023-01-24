@@ -1,4 +1,7 @@
 # Import necessary libraries
+import numpy as np
+from sklearn.neighbors import KNeighborsClassifier
+from datetime import datetime
 import dash_daq as daq
 import dash
 import dash_bootstrap_components as dbc
@@ -11,12 +14,51 @@ import pandas as pd
 from dash_bootstrap_templates import load_figure_template
 
 # define app
-dbc_css = ("https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates@V1.0.2/dbc.min.css")
+dbc_css = (
+    "https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates@V1.0.2/dbc.min.css")
 app = dash.Dash(__name__,
                 external_stylesheets=[dbc.themes.COSMO, dbc_css],
-                meta_tags=[{"name": "viewport", "content": "width=device-width"}],
+                meta_tags=[{"name": "viewport",
+                            "content": "width=device-width"}],
                 suppress_callback_exceptions=True)
 load_figure_template("COSMO")
+
+
+# function to predict the consumption currently it predicts the consumption .
+# 0 stands for high consumption (stop the pump) 1 stands for low consumption (start the pump)
+
+
+def predict():
+    # load the training data
+    df = pd.read_csv('labeled_dataset_soil-U.csv')
+
+    # select the features and target for the model
+    X = df[['salt', 'soil', 'temp', 'humid']]
+    y = df['Gn']
+
+    # create and train the KNN model
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(X, y)
+
+    # connect to the database
+    conn = sqlite3.connect('messages2.db')
+
+    # load the data
+
+    test_data = pd.read_sql_query(
+        "SELECT * FROM messages ORDER BY date desc , time DESC LIMIT 1", conn)
+    # select the features from the external data
+    X_test = test_data[['salt', 'soil', 'temp', 'humid']]
+    # predictions on the data
+    predictions = knn.predict(X_test)
+
+    # Print the predictions
+    print(predictions)
+
+
+# call the function
+predict()
+
 
 # create connect to database
 db = sqlite3.connect('messages.db')
@@ -43,23 +85,29 @@ dd = pd.read_sql_query(
 FigSalt = px.line(dd, x='Hour', y='Salinity', title='Average Salinity')
 
 # create table if not avaible and update category for all new sensors
-cursor.execute("CREATE TABLE IF NOT EXISTS sensors (device_name text, category text, UNIQUE(device_name))")
+cursor.execute(
+    "CREATE TABLE IF NOT EXISTS sensors (device_name text, category text, UNIQUE(device_name))")
 cursor.execute(
     "INSERT OR IGNORE INTO sensors(device_name) SELECT Min(device_name) AS device_name  FROM   messages GROUP BY device_name")
-cursor.execute("UPDATE sensors SET category = 'Not Selected' WHERE category IS NULL")
+cursor.execute(
+    "UPDATE sensors SET category = 'Not Selected' WHERE category IS NULL")
 db.commit()
-df = pd.read_sql_query("SELECT Min(device_name) AS device_name, category FROM sensors GROUP BY device_name", db)
+df = pd.read_sql_query(
+    "SELECT Min(device_name) AS device_name, category FROM sensors GROUP BY device_name", db)
 dn = pd.read_sql_query(
     "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date > date_now) GROUP BY device_name",
     db)
-cursor2.execute("CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state TEXT, datetime TEXT)")
+cursor2.execute(
+    "CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state TEXT, datetime TEXT)")
 conn.commit()
-result = cursor2.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1")
+result = cursor2.execute(
+    "SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1")
 
 if result == 'Auto':
-    type_control='auto'
+    type_control = 'auto'
 elif result == 'Manually':
-    result2 = cursor2.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1")
+    result2 = cursor2.execute(
+        "SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1")
     if result2 == 'on':
         type_control = 'on'
     else:
@@ -69,6 +117,8 @@ else:
 db.close()
 conn.close()
 # method get average for temp/humid/salt last 10 min
+
+
 def get_record(mesure):
     db = sqlite3.connect('messages.db')
     cursor = db.cursor()
@@ -96,16 +146,20 @@ def create_card(title, content, color_card):
         [
             dbc.CardHeader(html.H5(title, className="text-center")),
             dbc.CardBody([html.H2(content, className="text-center"), ]),
-            dbc.CardFooter(dbc.Button("Click here", color="light", className="d-block mx-auto", ), ),
+            dbc.CardFooter(dbc.Button("Click here", color="light",
+                           className="d-block mx-auto", ), ),
         ],
         color=color_card, inverse=True
     )
     return (card)
 
 
-humidity_card = create_card("Humidity", str(get_record("humid")) + "%", "primary")
-salinity_card = create_card("Soil Salinity", str(get_record("salt")) + "µS/cm", "success")
-temp_card = create_card("Temperature", str(get_record("temp")) + "°C", "danger")
+humidity_card = create_card("Humidity", str(
+    get_record("humid")) + "%", "primary")
+salinity_card = create_card("Soil Salinity", str(
+    get_record("salt")) + "µS/cm", "success")
+temp_card = create_card("Temperature", str(
+    get_record("temp")) + "°C", "danger")
 
 # define devices deactivated / update category devices / control water pump
 accordion = html.Div(
@@ -137,7 +191,8 @@ accordion = html.Div(
                 [
                     html.P("Select Device Name"),
                     dcc.Dropdown(id='dd_deviceName',
-                                 options=[{'label': i, 'value': i} for i in df['device_name'].unique()],
+                                 options=[{'label': i, 'value': i}
+                                          for i in df['device_name'].unique()],
                                  value='Not Selected', clearable=False),
                     html.Br(),
                     html.P("Select Category"),
@@ -157,7 +212,8 @@ accordion = html.Div(
                     html.Div(
                         children=[
                             html.Div([
-                                html.Label(['Choice control pump'], style={'fontWeight': 'bold'}),
+                                html.Label(['Choice control pump'],
+                                           style={'fontWeight': 'bold'}),
 
                                 dcc.RadioItems(
                                     id='pump-control',
@@ -244,13 +300,16 @@ app.layout = html.Div([
     html.Br(),
 ])
 
+
 def insert_control_data(control_type, pump_state):
     conn = sqlite3.connect('pump.db')
     cursor = conn.cursor()
     if control_type == 'auto':
-        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', 'off', datetime.datetime.now()))
+        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)",
+                       ('Auto', 'off', datetime.datetime.now()))
     else:
-        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", (control_type, pump_state, datetime.datetime.now()))
+        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)",
+                       (control_type, pump_state, datetime.datetime.now()))
     conn.commit()
     print("Data inserted successfully")
     conn.close()
@@ -266,6 +325,8 @@ def record_control_data(valueControl):
         insert_control_data('Manually', valueControl)
 
 # for device list
+
+
 @app.callback(
     Output("offcanvas-scrollable", "is_open"),
     Input("open-offcanvas-scrollable", "n_clicks"),
@@ -291,8 +352,6 @@ def display_confirm(valueCategory, valueDeviceName):
     return False
 
 
-
-
 # for change category
 @app.callback(
     Output('dd-output-container', 'children'),
@@ -300,12 +359,12 @@ def display_confirm(valueCategory, valueDeviceName):
     Input('dd_category', 'value'),
     Input('confirm-danger', 'submit_n_clicks')
 )
-
 def update_output(valueName, valueCate, submit_n_clicks):
     if submit_n_clicks:
         db = sqlite3.connect('messages.db')
         cursor = db.cursor()
-        cursor.execute('''UPDATE sensors SET category = ? WHERE device_name = ?''', (valueCate, valueName,))
+        cursor.execute(
+            '''UPDATE sensors SET category = ? WHERE device_name = ?''', (valueCate, valueName,))
         db.commit()
         db.close()
         return f'You have select category {valueCate} for device {valueName}'
@@ -314,4 +373,3 @@ def update_output(valueName, valueCate, submit_n_clicks):
 # Run the app on all port server
 if __name__ == '__main__':
     app.run_server(host='0.0.0.0', port='80', debug=True)
-
