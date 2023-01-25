@@ -7,7 +7,7 @@ A smart watering system is a type of irrigation system that uses advanced techno
 - [How to install](https://github.com/GP-712/Smart_watring_system#how-to-install)
 - [How to configure](https://github.com/GP-712/Smart_watring_system#how-to-configure)
 - [How to use](https://github.com/GP-712/Smart_watring_system#how-to-use)
-- [How to Prerequisites](https://github.com/GP-712/Smart_watring_system#prerequisites)
+- [Prerequisites](https://github.com/GP-712/Smart_watring_system#prerequisites)
 
 ## How to install
 
@@ -50,4 +50,7 @@ Here is an explanation of use the project
 
 ## Prerequisites
 
-- you should have sensor x, if you dont have, pay it from WWW.ass.com
+- LilyGo T-Higrow (available from AliExpress).
+- Windows 10 , VsCode and PlatformI0 extention.
+- MQTT server.
+- python V3 with DASH library installed.
