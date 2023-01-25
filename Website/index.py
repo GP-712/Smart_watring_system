@@ -260,10 +260,31 @@ def insert_control_data(control_type, pump_state):
     Output('pump-control', 'value'),
     [Input('pump-control', 'value')])
 def record_control_data(valueControl):
+    conn = sqlite3.connect('pump.db')
+    cursor = conn.cursor()
     if valueControl == 'auto':
-        insert_control_data(valueControl, valueControl)
-    elif (valueControl == 'off') or (valueControl == 'on'):
-        insert_control_data('Manually', valueControl)
+        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', 'off', datetime.datetime.now()))
+    else:
+        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Manually', valueControl, datetime.datetime.now()))
+    conn.commit()
+    conn.close()
+    # get the latest value from the controls table
+    conn = sqlite3.connect('pump.db')
+    cursor2 = conn.cursor()
+    result = cursor2.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+    if result[0] == 'Auto':
+        type_control='auto'
+    elif result[0] == 'Manually':
+        result2 = cursor2.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+        if result2[0] == 'on':
+            type_control = 'on'
+        else:
+            type_control = 'off'
+    else:
+        type_control = 'null'
+    conn.close()
+    return type_control
+
 
 # for device list
 @app.callback(
