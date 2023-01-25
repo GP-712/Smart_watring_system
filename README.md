@@ -12,10 +12,31 @@ A smart watering system is a type of irrigation system that uses advanced techno
 ## How to install
 
 Here is an explanation of the steps to install the project
-- First one 
-- Second one
 
-## How to configure
+### 1- Install MQTT Broker (Mosquitto) ###
+Execute the following commands:
+``` bash
+sudo yum -y install epel-release
+sudo yum -y install mosquitto
+sudo systemctl start mosquitto
+sudo systemctl enable mosquitto
+```
+After that, edit file `/etc/mosquitto/mosquitto.conf` and add the commands after `# General configuration` (replace `ip_server` with ip server used)
+``` pan
+listener 1883 ip_server
+allow_anonymous true
+```
+After edit, we need to restart the service to implement the modifications:
+``` bash
+sudo systemctl restart mosquitto
+```
+
+
+### 2- Git files ###
+
+### 3- Configure and start service ###
+
+## How to configure sensors
 
 Here is an explanation of the steps to configure the project
 - First one 
