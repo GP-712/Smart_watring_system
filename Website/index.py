@@ -41,7 +41,7 @@ def predict():
     knn.fit(X, y)
 
     # connect to the database
-    conn = sqlite3.connect('messages2.db')
+    conn = sqlite3.connect('messages.db')
 
     # load the data
 
@@ -86,34 +86,27 @@ FigSalt = px.line(dd, x='Hour', y='Salinity', title='Average Salinity')
 
 # create table if not avaible and update category for all new sensors
 cursor.execute(
-    "CREATE TABLE IF NOT EXISTS sensors (device_name text, category text, UNIQUE(device_name))")
+    "CREATE TABLE IF NOT EXISTS sensors (device_name text, macAddress text, category text, UNIQUE(macAddress))")
 cursor.execute(
-    "INSERT OR IGNORE INTO sensors(device_name) SELECT Min(device_name) AS device_name  FROM   messages GROUP BY device_name")
+    "INSERT OR IGNORE INTO sensors(macAddress) SELECT Min(device_name) AS device_name  FROM   messages GROUP BY device_name")
 cursor.execute(
     "UPDATE sensors SET category = 'Not Selected' WHERE category IS NULL")
+cursor.execute(
+    "UPDATE sensors SET device_name = 'Not Selected' WHERE device_name IS NULL")
 db.commit()
 df = pd.read_sql_query(
-    "SELECT Min(device_name) AS device_name, category FROM sensors GROUP BY device_name", db)
+    "SELECT Min(macAddress) AS macAddress, device_name, category FROM sensors GROUP BY macAddress", db)
 dn = pd.read_sql_query(
     "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date > date_now) GROUP BY device_name",
     db)
+dz = pd.read_sql_query("SELECT Min(device_name) AS device_name, humid, temp, salt, date, time FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-15 minutes') GROUP BY device_name", db)
 cursor2.execute(
     "CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state TEXT, datetime TEXT)")
 conn.commit()
 result = cursor2.execute(
     "SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1")
 
-if result == 'Auto':
-    type_control = 'auto'
-elif result == 'Manually':
-    result2 = cursor2.execute(
-        "SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1")
-    if result2 == 'on':
-        type_control = 'on'
-    else:
-        type_control = 'off'
-else:
-    type_control = 'null'
+type_control = 'null'
 db.close()
 conn.close()
 # method get average for temp/humid/salt last 10 min
@@ -124,13 +117,13 @@ def get_record(mesure):
     cursor = db.cursor()
     if (mesure == "temp"):
         cursor.execute(
-            "SELECT AVG(temp) FROM messages WHERE date = strftime('%d-%m-%Y','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
+            "SELECT ROUND(AVG(temp), 2) FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
     elif (mesure == "salt"):
         cursor.execute(
-            "SELECT AVG(salt) FROM messages WHERE date = strftime('%d-%m-%Y','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
+            "SELECT ROUND(AVG(salt), 2) FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
     elif (mesure == "humid"):
         cursor.execute(
-            "SELECT AVG(humid) FROM messages WHERE date = strftime('%d-%m-%Y','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
+            "SELECT ROUND(AVG(humid), 2) FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
     else:
         db.close()
         return ("Nothing!")
@@ -140,26 +133,132 @@ def get_record(mesure):
     return (mesureN[0][0])
 
 
-# method create cards for average last 10 min
-def create_card(title, content, color_card):
-    card = dbc.Card(
+# cards for average last 10 min
+
+
+offc_humid = dbc.Button("Click here", color="light",
+                           className="d-block mx-auto", id='button_humid'),\
+                html.Div([
+                    dbc.Offcanvas(
+                        dash_table.DataTable(
+                            id='table-deviceName-humid',
+                            data=dz.to_dict('records'),
+                            columns=[
+                                {'id': 'device_name', 'name': 'Device Name'},
+                                {'id': 'time', 'name': 'Time'},
+                                {'id': 'humid', 'name': 'Humidity'},
+                            ],
+                            sort_action='native',
+                            style_as_list_view=True,
+                            style_cell={
+                                'padding': '5px',
+                                'textAlign': 'center'
+                            },
+                            style_header={
+                    'color': '#2373cc',
+                    'background': '#e9f2fc',
+                    'fontWeight': 'bold',
+                    'textAlign': 'center',
+                },
+            ),
+            id="offc_humidy",
+            scrollable=True,
+            title="All humidity readings last 15 minutes",
+            is_open=False,
+        )])
+
+humidity_card = dbc.Card(
         [
-            dbc.CardHeader(html.H5(title, className="text-center")),
-            dbc.CardBody([html.H2(content, className="text-center"), ]),
-            dbc.CardFooter(dbc.Button("Click here", color="light",
-                           className="d-block mx-auto", ), ),
+            dbc.CardHeader(html.H5("Humidity", className="text-center")),
+            dbc.CardBody([html.H2(str(get_record("humid")) + "%", className="text-center"), ]),
+            dbc.CardFooter(offc_humid),
         ],
-        color=color_card, inverse=True
+        color="primary", inverse=True
     )
-    return (card)
 
 
-humidity_card = create_card("Humidity", str(
-    get_record("humid")) + "%", "primary")
-salinity_card = create_card("Soil Salinity", str(
-    get_record("salt")) + "µS/cm", "success")
-temp_card = create_card("Temperature", str(
-    get_record("temp")) + "°C", "danger")
+offc_salt = dbc.Button("Click here", color="light",
+                           className="d-block mx-auto", id='button_salt'),\
+                html.Div([
+                    dbc.Offcanvas(
+                        dash_table.DataTable(
+                            id='table-deviceName-salt',
+                            data=dz.to_dict('records'),
+                            columns=[
+                                {'id': 'device_name', 'name': 'Device Name'},
+                                {'id': 'time', 'name': 'Time'},
+                                {'id': 'salt', 'name': 'Salinity'},
+                            ],
+                            sort_action='native',
+                            style_as_list_view=True,
+                            style_cell={
+                                'padding': '5px',
+                                'textAlign': 'center'
+                            },
+                            style_header={
+                    'color': '#2373cc',
+                    'background': '#e9f2fc',
+                    'fontWeight': 'bold',
+                    'textAlign': 'center',
+                },
+            ),
+            id="offc_salty",
+            scrollable=True,
+            title="All salinity readings last 15 minutes",
+            is_open=False,
+        )])
+
+salinity_card = dbc.Card(
+        [
+            dbc.CardHeader(html.H5("Soil Salinity", className="text-center")),
+            dbc.CardBody([html.H2(str(get_record("salt")) + "µS/cm", className="text-center"), ]),
+            dbc.CardFooter(offc_salt),
+        ],
+        color="success", inverse=True
+    )
+
+
+offc_temp = dbc.Button("Click here", color="light",
+                           className="d-block mx-auto", id='button_temp'),\
+                html.Div([
+                    dbc.Offcanvas(
+                        dash_table.DataTable(
+                            id='table-deviceName-temp',
+                            data=dz.to_dict('records'),
+                            columns=[
+                                {'id': 'device_name', 'name': 'Device Name'},
+                                {'id': 'time', 'name': 'Time'},
+                                {'id': 'temp', 'name': 'Temperature'},
+                            ],
+                            sort_action='native',
+                            style_as_list_view=True,
+                            style_cell={
+                                'padding': '5px',
+                                'textAlign': 'center'
+                            },
+                            style_header={
+                    'color': '#2373cc',
+                    'background': '#e9f2fc',
+                    'fontWeight': 'bold',
+                    'textAlign': 'center',
+                },
+            ),
+            id="offc_temp-scrollable",
+            scrollable=True,
+            title="All temperature readings last 15 minutes",
+            is_open=False,
+        )])
+
+temp_card = dbc.Card(
+        [
+            dbc.CardHeader(html.H5("Temperature", className="text-center")),
+            dbc.CardBody([html.H2(str(get_record("temp")) + "°C", className="text-center"), ]),
+            dbc.CardFooter(offc_temp),
+        ],
+        color="danger", inverse=True
+    )
+
+
 
 # define devices deactivated / update category devices / control water pump
 accordion = html.Div(
@@ -192,8 +291,13 @@ accordion = html.Div(
                     html.P("Select Device Name"),
                     dcc.Dropdown(id='dd_deviceName',
                                  options=[{'label': i, 'value': i}
-                                          for i in df['device_name'].unique()],
+                                          for i in df['macAddress'].unique()],
                                  value='Not Selected', clearable=False),
+                    html.Br(),
+                    dcc.Input(id='input_deviceName'
+                              , type='text'
+                              , placeholder='Name for the device'),
+                    html.Br(),
                     html.Br(),
                     html.P("Select Category"),
                     dcc.Dropdown(id='dd_category', options=['Not Selected', 'Sikkry', 'Khalas'], value='Not Selected',
@@ -260,6 +364,7 @@ nav = dbc.NavbarSimple(
                 data=df.to_dict('records'),
                 columns=[
                     {'id': 'device_name', 'name': 'Device Name'},
+                    {'id': 'macAddress', 'name': 'Mac Address'},
                     {'id': 'category', 'name': 'Category'},
                 ],
                 sort_action='native',
@@ -301,18 +406,38 @@ app.layout = html.Div([
 ])
 
 
-def insert_control_data(control_type, pump_state):
-    conn = sqlite3.connect('pump.db')
-    cursor = conn.cursor()
-    if control_type == 'auto':
-        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)",
-                       ('Auto', 'off', datetime.datetime.now()))
-    else:
-        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)",
-                       (control_type, pump_state, datetime.datetime.now()))
-    conn.commit()
-    print("Data inserted successfully")
-    conn.close()
+@app.callback(
+    Output("offc_humidy", "is_open"),
+    Input("button_humid", "n_clicks"),
+    State("offc_humidy", "is_open"),
+)
+
+def toggle_offcanvas_Humid(n2, is_open):
+    if n2:
+        return not is_open
+    return is_open
+
+@app.callback(
+    Output("offc_salty", "is_open"),
+    Input("button_salt", "n_clicks"),
+    State("offc_salty", "is_open"),
+)
+
+def toggle_offcanvas_Salt(n2, is_open):
+    if n2:
+        return not is_open
+    return is_open
+
+@app.callback(
+    Output("offc_temp-scrollable", "is_open"),
+    Input("button_temp", "n_clicks"),
+    State("offc_temp-scrollable", "is_open"),
+)
+def toggle_offcanvas_Temp(n2, is_open):
+    if n2:
+        return not is_open
+    return is_open
+
 
 
 @app.callback(
@@ -321,21 +446,27 @@ def insert_control_data(control_type, pump_state):
 def record_control_data(valueControl):
     conn = sqlite3.connect('pump.db')
     cursor = conn.cursor()
+    result0 = cursor.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+    result1 = cursor.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+
     if valueControl == 'auto':
-        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', 'off', datetime.datetime.now()))
-    else:
-        cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Manually', valueControl, datetime.datetime.now()))
+        if result0 != 'auto':
+            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', 'off', datetime.datetime.now()))
+            print("Data inserted successfully")
+    elif valueControl == 'on' or valueControl == 'off':
+        if valueControl != result1:
+            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Manually', valueControl, datetime.datetime.now()))
+            print("Data inserted successfully")
+
     conn.commit()
-    conn.close()
+
     # get the latest value from the controls table
-    conn = sqlite3.connect('pump.db')
-    cursor2 = conn.cursor()
-    result = cursor2.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
-    if result[0] == 'Auto':
+    result2 = cursor.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+    if result2[0] == 'Auto':
         type_control='auto'
-    elif result[0] == 'Manually':
-        result2 = cursor2.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
-        if result2[0] == 'on':
+    elif result2[0] == 'Manually':
+        result3 = cursor.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+        if result3[0] == 'on':
             type_control = 'on'
         else:
             type_control = 'off'
@@ -377,18 +508,20 @@ def display_confirm(valueCategory, valueDeviceName):
 @app.callback(
     Output('dd-output-container', 'children'),
     Input('dd_deviceName', 'value'),
+    Input('input_deviceName', 'value'),
     Input('dd_category', 'value'),
     Input('confirm-danger', 'submit_n_clicks')
 )
-def update_output(valueName, valueCate, submit_n_clicks):
-    if submit_n_clicks:
-        db = sqlite3.connect('messages.db')
-        cursor = db.cursor()
-        cursor.execute(
-            '''UPDATE sensors SET category = ? WHERE device_name = ?''', (valueCate, valueName,))
-        db.commit()
-        db.close()
-        return f'You have select category {valueCate} for device {valueName}'
+def update_output(valueName, valueInName, valueCate, submit_n_clicks):
+    if valueInName:
+        if submit_n_clicks:
+            db = sqlite3.connect('messages.db')
+            cursor = db.cursor()
+            cursor.execute(
+                '''UPDATE sensors SET category = ?, device_name = ? WHERE macAddress = ?''', (valueCate, valueInName, valueName,))
+            db.commit()
+            db.close()
+            return f'You have select category {valueCate} for device {valueName}'
 
 
 # Run the app on all port server
