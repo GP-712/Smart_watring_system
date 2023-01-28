@@ -31,6 +31,11 @@ After edit, we need to restart the service to implement the modifications:
 sudo systemctl restart mosquitto
 ```
 
+install wget for download Project files:\
+```bash
+sudo yum install wget -y
+```
+
 
 ### 2- Git files ###
 
