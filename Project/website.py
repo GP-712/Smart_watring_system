@@ -1,8 +1,6 @@
 # Import necessary libraries
-import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 from datetime import datetime
-import dash_daq as daq
 import dash
 import dash_bootstrap_components as dbc
 from dash import html, dcc, dash_table
@@ -24,40 +22,6 @@ app = dash.Dash(__name__,
 load_figure_template("COSMO")
 
 
-# function to predict the consumption currently it predicts the consumption .
-# 0 stands for high consumption (stop the pump) 1 stands for low consumption (start the pump)
-
-
-def predict():
-    # load the training data
-    df = pd.read_csv('labeled_dataset_soil-U.csv')
-
-    # select the features and target for the model
-    X = df[['salt', 'soil', 'temp', 'humid']]
-    y = df['Gn']
-
-    # create and train the KNN model
-    knn = KNeighborsClassifier(n_neighbors=5)
-    knn.fit(X, y)
-
-    # connect to the database
-    conn = sqlite3.connect('databases/messages.db')
-
-    # load the data
-
-    test_data = pd.read_sql_query(
-        "SELECT * FROM messages ORDER BY date desc , time DESC LIMIT 1", conn)
-    # select the features from the external data
-    X_test = test_data[['salt', 'soil', 'temp', 'humid']]
-    # predictions on the data
-    predictions = knn.predict(X_test)
-
-    # Print the predictions
-    print(predictions)
-
-
-# call the function
-predict()
 
 
 # create connect to database
@@ -79,10 +43,8 @@ dd = pd.read_sql_query(
 FigHumid = px.line(dd, x='Hour', y='Humidity', title='Average Humidity')
 
 # import data and create graph salt
-dd = pd.read_sql_query(
-    "SELECT AVG(salt) as Salinity , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",
-    db)
-FigSalt = px.line(dd, x='Hour', y='Salinity', title='Average Salinity')
+#dd = pd.read_sql_query("SELECT AVG(salt) as Salinity , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",db)
+#FigSalt = px.line(dd, x='Hour', y='Salinity', title='Average Salinity')
 
 # create table if not avaible and update category for all new sensors
 cursor.execute(
@@ -97,18 +59,93 @@ db.commit()
 df = pd.read_sql_query(
     "SELECT Min(macAddress) AS macAddress, device_name, category FROM sensors GROUP BY macAddress", db)
 dn = pd.read_sql_query(
-    "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date > date_now) GROUP BY device_name",
+    "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date < date_now) GROUP BY device_name",
     db)
 dz = pd.read_sql_query("SELECT Min(device_name) AS device_name, humid, temp, salt, date, time FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-15 minutes') GROUP BY device_name", db)
-cursor2.execute(
-    "CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state TEXT, datetime TEXT)")
+cursor2.execute("CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state INTEGER, datetime TEXT)")
+cursor2.execute("CREATE TABLE IF NOT EXISTS predictions (status INTEGER, datetime TEXT)")
 conn.commit()
-result = cursor2.execute(
-    "SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1")
+
+
+dml1 = pd.read_sql_query(
+    "SELECT * FROM predictions WHERE strftime('%d-%m-%Y','now') >= datetime('now','-3 day')", conn)
+dml2 = pd.read_sql_query(
+    "SELECT * FROM controls WHERE strftime('%d-%m-%Y','now') >= datetime('now','-3 day')", conn)
+FigTest = px.line(dml1, x='datetime', y='status', title='Average Temperatures')
+FigTest.add_scatter(x=dml2['datetime'], y=dml2['pump_state'],mode='lines', name="second trace")
+
 
 type_control = 'null'
+
 db.close()
 conn.close()
+
+# method check what last predict to change pump status
+def checkPredict():
+    conn2 = sqlite3.connect('databases/pump.db')
+    cursor2 = conn2.cursor()
+    test_data = cursor2.execute("SELECT status FROM predictions ORDER BY datetime DESC LIMIT 1").fetchall()
+    print("done check, its:", test_data[0][0])
+    conn2.close()
+    return test_data[0][0]
+
+
+# function to predict the consumption currently it predicts the consumption .
+# 0 stands for high consumption (stop the pump) 1 stands for low consumption (start the pump)
+def predict():
+    # load the training data
+    df = pd.read_csv('labeled_dataset_soil-U.csv')
+
+    # select the features and target for the model
+    X = df[['salt', 'soil', 'temp', 'humid']]
+    y = df['Gn']
+
+    # create and train the KNN model
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(X, y)
+
+    # connect to the database
+    conn = sqlite3.connect('databases/messages.db')
+
+    # load the data
+
+    test_data = pd.read_sql_query("SELECT * FROM messages ORDER BY date desc , time DESC LIMIT 1", conn)
+    # select the features from the external data
+    conn.close()
+    X_test = test_data[['salt', 'soil', 'temp', 'humid']]
+    # predictions on the data
+    predictions = knn.predict(X_test)
+
+    conn2 = sqlite3.connect('databases/pump.db')
+    cursor2 = conn2.cursor()
+    test_data = cursor2.execute("SELECT status FROM predictions ORDER BY datetime DESC LIMIT 1").fetchall()
+    rowCount = len(test_data)
+    if predictions[0] == 1:
+        if rowCount == 0:
+            cursor2.execute("INSERT INTO predictions (status, datetime) VALUES (?,?)", (1, datetime.datetime.now()))
+            print("Added but its initial", predictions[0])
+        elif test_data[0][0] == 0:
+            cursor2.execute("INSERT INTO predictions (status, datetime) VALUES (?,?)", (1, datetime.datetime.now()))
+            print("Added " + predictions[0])
+        elif test_data[0][0] == 1:
+            print("its added before!")
+    elif predictions[0] == 0:
+        if rowCount == 0:
+            cursor2.execute("INSERT INTO predictions (status, datetime) VALUES (?,?)", (0, datetime.datetime.now()))
+            print("Added but its initial", predictions[0])
+        elif test_data == 1:
+            cursor2.execute("INSERT INTO predictions (status, datetime) VALUES (?,?)", (0, datetime.datetime.now()))
+            print("Added " + predictions[0])
+        elif test_data[0][0] == 0:
+            print("its added before!")
+    conn2.commit()
+    conn2.close()
+
+
+# call the function
+predict()
+
+
 # method get average for temp/humid/salt last 10 min
 
 
@@ -345,7 +382,7 @@ graphRow1 = dbc.Row([dbc.Col(id='humidity_card', children=[humidity_card], align
                      dbc.Col(id='temp_card', children=[temp_card], md=3),
                      dbc.Col(id='salinity_card', children=[salinity_card], md=3), ], justify="center")
 graphRow2 = dbc.Row([dbc.Col(dcc.Graph(id="graphHumid", figure=FigHumid), md=6),
-                     dbc.Col(dcc.Graph(id="graphSalt", figure=FigSalt), md=6)])
+                     dbc.Col(dcc.Graph(id="graphSalt", figure=FigTest), md=6)])
 graphRow3 = dbc.Row(
     [dbc.Col(dcc.Graph(id="graphTemp", figure=FigTemp), md=6), dbc.Col(id='list_group', children=[accordion], md=6)])
 
@@ -446,17 +483,20 @@ def toggle_offcanvas_Temp(n2, is_open):
 def record_control_data(valueControl):
     conn = sqlite3.connect('databases/pump.db')
     cursor = conn.cursor()
-    result0 = cursor.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
-    result1 = cursor.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
-
+    result0 = cursor.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+    result1 = cursor.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+    rowCount = len(result0)
     if valueControl == 'auto':
-        if result0 != 'auto':
-            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', 'off', datetime.datetime.now()))
-            print("Data inserted successfully")
+        if rowCount == 0 or result0 != 'auto':
+            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', checkPredict(), datetime.datetime.now()))
+            print("pump now it auto")
     elif valueControl == 'on' or valueControl == 'off':
-        if valueControl != result1:
-            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Manually', valueControl, datetime.datetime.now()))
-            print("Data inserted successfully")
+        if valueControl =='off' != result1:
+            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Manually', 0, datetime.datetime.now()))
+            print("pump now is off")
+        elif valueControl =='on' != result1:
+            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Manually', 1, datetime.datetime.now()))
+            print("pump now is on")
 
     conn.commit()
 
@@ -466,7 +506,7 @@ def record_control_data(valueControl):
         type_control='auto'
     elif result2[0] == 'Manually':
         result3 = cursor.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
-        if result3[0] == 'on':
+        if result3[0] == 1:
             type_control = 'on'
         else:
             type_control = 'off'
