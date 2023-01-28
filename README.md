@@ -31,13 +31,61 @@ After edit, we need to restart the service to implement the modifications:
 sudo systemctl restart mosquitto
 ```
 
-install wget for download Project files:\
+### 2- Git files ###
+install wget for download Project files:
 ```bash
 sudo yum install wget -y
 ```
-
-
-### 2- Git files ###
+install unzip for extract files from zip:
+```bash
+sudo yum install unzip -y
+```
+unzip file:
+```bash
+sudo unzip Project.zip
+```
+edit "/Project/mqttListener.py" line 18 (change ip server): 
+```bash
+client.connect("ip_server", 1883)
+```
+install "systemd" for create service to start project every run server:
+```bash
+sudo yum install -y systemd
+```
+create file service in "/etc/systemd/system":
+```bash
+sudo touch /etc/systemd/system/Project.service
+```
+add the script in file created before:
+```bash
+[Unit]
+Description=project service
+After=multi-user.target
+[Service]
+Type=simple
+Restart=always
+WorkingDirectory=/Project
+ExecStart=/usr/bin/python3 main.py
+[Install]
+WantedBy=multi-user.target
+```
+install pip to install python pakages:
+```bash
+sudo yum install python-pip
+```
+install needed package python using pip:
+```bash
+pip install paho-mqtt schedule numpy scikit-learn dash dash_daq dash-bootstrap-components dash_bootstrap_templates plotly_express pandas
+```
+run the command for reload services:
+```bash
+sudo systemctl daemon-reload
+```
+run the commands for start and enable service:
+```bash
+sudo systemctl enable Project.service
+sudo systemctl start Project.service
+```
 
 ### 3- Configure and start service ###
 
