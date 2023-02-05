@@ -3,6 +3,7 @@ import sqlite3
 import json
 from queue import Queue
 from datetime import date
+import random
 
 db_path = "databases/messages.db"
 
@@ -43,5 +44,15 @@ while True:
         cursor.execute('''CREATE TABLE IF NOT EXISTS messages (device_name text, date text, time text, temp real, humid real, soil real, soil_temp real, salt real, bat real, batcharge text, wifi_ssid text)''')
         cursor.execute("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                        (device_name, date_t, time, temp, humid, soil, soil_temp, salt, bat, batcharge, wifi_ssid))
+        cursor.execute("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                       ('a818f430bda4', date_t, time, (temp+random.randint(-2, 2)), (humid+random.randint(-2, 2)), (soil+random.randint(-2, 2)), soil_temp, (salt+random.randint(-2, 2)), bat, batcharge, wifi_ssid))
+        cursor.execute("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                       ('71c3d0b2f7e2', date_t, time, (temp + random.randint(-2, 2)), (humid + random.randint(-2, 2)),
+                        (soil + random.randint(-2, 2)), soil_temp, (salt + random.randint(-2, 2)), bat, batcharge,
+                        wifi_ssid))
+        cursor.execute("INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                       ('97e9ef193036', date_t, time, (temp + random.randint(-2, 2)), (humid + random.randint(-2, 2)),
+                        (soil + random.randint(-2, 2)), soil_temp, (salt + random.randint(-2, 2)), bat, batcharge,
+                        wifi_ssid))
         conn.commit()
         conn.close()

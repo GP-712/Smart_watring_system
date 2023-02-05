@@ -32,15 +32,15 @@ cursor2 = conn.cursor()
 
 # import data and create graph temp
 dd = pd.read_sql_query(
-    "SELECT AVG(temp) as Temperature , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",
+    "SELECT (date || ' ' || time) as Times, AVG(temp) as Temperature  FROM messages WHERE Times >= strftime('%Y-%m-%d %H', datetime('now', '-1 day')) group by strftime ('%H',time) ORDER BY date(Times) asc",
     db)
-FigTemp = px.line(dd, x='Hour', y='Temperature', title='Average Temperatures')
+FigTemp = px.line(dd, x='Times', y='Temperature', title='Average Temperatures')
 
 # import data and create graph humid
 dd = pd.read_sql_query(
-    "SELECT AVG(humid) as Humidity , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",
+    "SELECT (date || ' ' || time) as Times, AVG(humid) as Humidity FROM messages WHERE Times >= strftime('%Y-%m-%d %H', datetime('now', '-1 day')) group by strftime ('%H',time) ORDER BY date(Times) asc",
     db)
-FigHumid = px.line(dd, x='Hour', y='Humidity', title='Average Humidity')
+FigHumid = px.line(dd, x='Times', y='Humidity', title='Average Humidity')
 
 # import data and create graph salt
 #dd = pd.read_sql_query("SELECT AVG(salt) as Salinity , strftime ('%H',time) as Hour, date FROM messages WHERE   date >= datetime('now','-1 day') GROUP BY hour",db)
@@ -59,35 +59,23 @@ db.commit()
 df = pd.read_sql_query(
     "SELECT Min(macAddress) AS macAddress, device_name, category FROM sensors GROUP BY macAddress", db)
 dn = pd.read_sql_query(
-    "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<hour_now) OR (date < date_now) GROUP BY device_name",
+    "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<=hour_now) OR (date < date_now) GROUP BY device_name",
     db)
-dz = pd.read_sql_query("SELECT Min(device_name) AS device_name, humid, temp, salt, date, time FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-15 minutes') GROUP BY device_name", db)
-cursor2.execute("CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state INTEGER, datetime TEXT)")
-cursor2.execute("CREATE TABLE IF NOT EXISTS predictions (status INTEGER, datetime TEXT)")
+dz = pd.read_sql_query("SELECT Min(device_name) AS device_name, (date || ' ' || time) as Times, humid, temp, salt  FROM messages WHERE Times >= strftime('%Y-%m-%d %H', datetime('now', '-15 minutes')) GROUP BY device_name", db)
+cursor2.execute("CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state INTEGER, prediction INTEGER, datetime TEXT)")
 conn.commit()
 
 
 dml1 = pd.read_sql_query(
-    "SELECT * FROM predictions WHERE strftime('%d-%m-%Y','now') >= datetime('now','-3 day')", conn)
-dml2 = pd.read_sql_query(
-    "SELECT * FROM controls WHERE strftime('%d-%m-%Y','now') >= datetime('now','-3 day')", conn)
-FigTest = px.line(dml1, x='datetime', y='status', title='Average Temperatures')
-FigTest.add_scatter(x=dml2['datetime'], y=dml2['pump_state'],mode='lines', name="second trace")
-
-
+    "SELECT * FROM controls ORDER BY datetime DESC LIMIT 10", conn)
+FigTest = px.line(dml1, x='datetime', y=['pump_state','prediction'], title='ML chart')
+FigTest.update_layout(hovermode="x unified")
 type_control = 'null'
 
 db.close()
 conn.close()
 
 # method check what last predict to change pump status
-def checkPredict():
-    conn2 = sqlite3.connect('databases/pump.db')
-    cursor2 = conn2.cursor()
-    test_data = cursor2.execute("SELECT status FROM predictions ORDER BY datetime DESC LIMIT 1").fetchall()
-    print("done check, its:", test_data[0][0])
-    conn2.close()
-    return test_data[0][0]
 
 
 # function to predict the consumption currently it predicts the consumption .
@@ -115,35 +103,9 @@ def predict():
     X_test = test_data[['salt', 'soil', 'temp', 'humid']]
     # predictions on the data
     predictions = knn.predict(X_test)
-
-    conn2 = sqlite3.connect('databases/pump.db')
-    cursor2 = conn2.cursor()
-    test_data = cursor2.execute("SELECT status FROM predictions ORDER BY datetime DESC LIMIT 1").fetchall()
-    rowCount = len(test_data)
-    if predictions[0] == 1:
-        if rowCount == 0:
-            cursor2.execute("INSERT INTO predictions (status, datetime) VALUES (?,?)", (1, datetime.datetime.now()))
-            print("Added but its initial", predictions[0])
-        elif test_data[0][0] == 0:
-            cursor2.execute("INSERT INTO predictions (status, datetime) VALUES (?,?)", (1, datetime.datetime.now()))
-            print("Added " + predictions[0])
-        elif test_data[0][0] == 1:
-            print("its added before!")
-    elif predictions[0] == 0:
-        if rowCount == 0:
-            cursor2.execute("INSERT INTO predictions (status, datetime) VALUES (?,?)", (0, datetime.datetime.now()))
-            print("Added but its initial", predictions[0])
-        elif test_data == 1:
-            cursor2.execute("INSERT INTO predictions (status, datetime) VALUES (?,?)", (0, datetime.datetime.now()))
-            print("Added " + predictions[0])
-        elif test_data[0][0] == 0:
-            print("its added before!")
-    conn2.commit()
-    conn2.close()
+    return predictions[0];
 
 
-# call the function
-predict()
 
 
 # method get average for temp/humid/salt last 10 min
@@ -154,13 +116,13 @@ def get_record(mesure):
     cursor = db.cursor()
     if (mesure == "temp"):
         cursor.execute(
-            "SELECT ROUND(AVG(temp), 2) FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
+            "SELECT ROUND(AVG(temp), 2) FROM messages WHERE (date || ' ' || time) >= strftime('%Y-%m-%d %H', datetime('now', '-10 minutes'))")
     elif (mesure == "salt"):
         cursor.execute(
-            "SELECT ROUND(AVG(salt), 2) FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
+            "SELECT ROUND(AVG(salt), 2) FROM messages WHERE date = (date || ' ' || time) >= strftime('%Y-%m-%d %H', datetime('now', '-10 minutes'))")
     elif (mesure == "humid"):
         cursor.execute(
-            "SELECT ROUND(AVG(humid), 2) FROM messages WHERE date = strftime('%Y-%m-%d','now') AND strftime('%H:%M',time)<=strftime('%H:%M','now','-10 minutes')")
+            "SELECT ROUND(AVG(humid), 2) FROM messages WHERE (date || ' ' || time) >= strftime('%Y-%m-%d %H', datetime('now', '-10 minutes'))")
     else:
         db.close()
         return ("Nothing!")
@@ -168,6 +130,52 @@ def get_record(mesure):
     mesureN = cursor.fetchall()
     db.close()
     return (mesureN[0][0])
+
+def ml_status(needed):
+    conn = sqlite3.connect('databases/pump.db')
+    cursor2 = conn.cursor()
+    difference_time = cursor2.execute(
+        "SELECT ROUND((JULIANDAY(datetime('now')) - JULIANDAY(datetime)) * 24 * 60) AS difference FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+    type_now = cursor2.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+    pump_now = cursor2.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+    prediction_now = cursor2.execute("SELECT prediction FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+    conn.close()
+    if needed == 'need':
+        if type_now[0][0] == 'Auto':
+            needed = 'Auto is work!'
+        else:
+            if pump_now == prediction_now:
+                needed = 'you are good'
+            else:
+                if difference_time[0][0] > 0:
+                    needed = f'farm wast {int(abs(difference_time[0][0]))} litters water'
+                else:
+                    needed = f'farm need {int(abs(difference_time[0][0]))} litters water'
+    elif needed == 'advice':
+        if type_now[0][0] == 'Auto':
+            needed = 'No need for advice'
+        else:
+            if pump_now == prediction_now:
+                needed = 'No need for advice'
+            else:
+                if difference_time[0][0] > 0:
+                    needed = 'Turn off pump!'
+                else:
+                    needed = 'Turn on pump!'
+    return needed
+
+ml_card = dbc.Card(
+        [
+            dbc.CardHeader(html.H5("Current status", className="text-center")),
+            dbc.CardBody([
+                html.H5(ml_status('need'), className="text-center"),
+            ]),
+            dbc.CardFooter([
+                html.H5(ml_status('advice'), className="text-center"),
+            ]),
+        ],
+        color="secondary", inverse=True
+    )
 
 
 # cards for average last 10 min
@@ -182,7 +190,7 @@ offc_humid = dbc.Button("Click here", color="light",
                             data=dz.to_dict('records'),
                             columns=[
                                 {'id': 'device_name', 'name': 'Device Name'},
-                                {'id': 'time', 'name': 'Time'},
+                                {'id': 'Times', 'name': 'Time'},
                                 {'id': 'humid', 'name': 'Humidity'},
                             ],
                             sort_action='native',
@@ -223,7 +231,7 @@ offc_salt = dbc.Button("Click here", color="light",
                             data=dz.to_dict('records'),
                             columns=[
                                 {'id': 'device_name', 'name': 'Device Name'},
-                                {'id': 'time', 'name': 'Time'},
+                                {'id': 'Times', 'name': 'Time'},
                                 {'id': 'salt', 'name': 'Salinity'},
                             ],
                             sort_action='native',
@@ -264,7 +272,7 @@ offc_temp = dbc.Button("Click here", color="light",
                             data=dz.to_dict('records'),
                             columns=[
                                 {'id': 'device_name', 'name': 'Device Name'},
-                                {'id': 'time', 'name': 'Time'},
+                                {'id': 'Times', 'name': 'Time'},
                                 {'id': 'temp', 'name': 'Temperature'},
                             ],
                             sort_action='native',
@@ -307,7 +315,7 @@ accordion = html.Div(
                         id='devices-deactivated',
                         data=dn.to_dict('records'),
                         columns=[
-                            {'id': 'device_name', 'name': 'Device Name'},
+                            {'id': 'device_name', 'name': 'Mac Address Devices'},
                         ],
                         style_cell={
                             'padding': '5px',
@@ -378,9 +386,10 @@ accordion = html.Div(
     className="dbc dbc-row-selectable"
 )
 
-graphRow1 = dbc.Row([dbc.Col(id='humidity_card', children=[humidity_card], align="center", md=3),
-                     dbc.Col(id='temp_card', children=[temp_card], md=3),
-                     dbc.Col(id='salinity_card', children=[salinity_card], md=3), ], justify="center")
+graphRow1 = dbc.Row([dbc.Col(id='ml_card', children=[ml_card]),
+                     dbc.Col(id='humidity_card', children=[humidity_card]),
+                     dbc.Col(id='temp_card', children=[temp_card]),
+                     dbc.Col(id='salinity_card', children=[salinity_card]), ], justify="center")
 graphRow2 = dbc.Row([dbc.Col(dcc.Graph(id="graphHumid", figure=FigHumid), md=6),
                      dbc.Col(dcc.Graph(id="graphSalt", figure=FigTest), md=6)])
 graphRow3 = dbc.Row(
@@ -485,17 +494,22 @@ def record_control_data(valueControl):
     cursor = conn.cursor()
     result0 = cursor.execute("SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
     result1 = cursor.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+    prediction = int(predict())
     rowCount = len(result0)
+    if prediction == 0:
+        predictionAuto = 1
+    else:
+        predictionAuto = 0
     if valueControl == 'auto':
         if rowCount == 0 or result0 != 'auto':
-            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', checkPredict(), datetime.datetime.now()))
+            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetime) VALUES (?,?,?,?)", ('Auto', prediction, prediction, datetime.datetime.now()))
             print("pump now it auto")
     elif valueControl == 'on' or valueControl == 'off':
         if valueControl =='off' != result1:
-            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Manually', 0, datetime.datetime.now()))
+            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetime) VALUES (?,?,?,?)", ('Manually', 0, prediction, datetime.datetime.now()))
             print("pump now is off")
         elif valueControl =='on' != result1:
-            cursor.execute("INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Manually', 1, datetime.datetime.now()))
+            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetime) VALUES (?,?,?,?)", ('Manually', 1, prediction, datetime.datetime.now()))
             print("pump now is on")
 
     conn.commit()
