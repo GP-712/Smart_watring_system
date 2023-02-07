@@ -113,7 +113,7 @@ const String device_name = "HIGrow";
 ```
 #define TIME_TO_SLEEP  300       //Time ESP32 will go to sleep (in seconds)
 ```
-7. Add your MQTT server credentials
+7. Add your MQTT server credentials.
 ```
 const char broker[] = "146.190.117.90";
 int        port     = 1883;
