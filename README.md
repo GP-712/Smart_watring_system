@@ -90,10 +90,44 @@ sudo systemctl start Project.service
 ### 3- Configure and start service ###
 
 ## How to configure sensors
+1. Open Smart_watring_system/Sensor_frameware/Frimware/ directory in VS code.
+2. Connect the sensor to the computer using the type-c port on the sensor.
+3. Open "user-variables.sh" file. 
+4. Then edit the folowing lines : 
+```
+String ssidArr[] = {"Enterprise-pro", "Enterprise_EXT", "Enterprise_EXTN", "Enterprise" };
+int ssidArrNo = 4;
 
-Here is an explanation of the steps to configure the project
-- First one 
-- Second one
+const char* ssid = ""; // no need to fill in
+const char* password = "password";
+const char* ntpServer = "pool.ntp.org";
+``` 
+Add your ssid to the ssid array and insert your ssid password if required.
+
+
+5. You can change the device name if desired.
+```
+const String device_name = "HIGrow"; 
+```
+6. Adjust time to sleep. 
+```
+#define TIME_TO_SLEEP  300       //Time ESP32 will go to sleep (in seconds)
+```
+7. Add your MQTT server credentials
+```
+const char broker[] = "146.190.117.90";
+int        port     = 1883;
+const char mqttuser[] = ""; //add eventual mqtt username
+const char mqttpass[] = ""; //add eventual mqtt password
+```
+8. press the check mark (✓) on the tool bar to build the project.
+
+<p align="center">
+<img src="./Screenshots/1.png"><br>
+</p>
+9. Then press the arrow (→) on the tool bar to upload the code to the sensor board.
+<br /> 10. Place the sensor in the desired area.
+
 
 ## How to use
 
