@@ -10,7 +10,6 @@ import datetime
 import plotly.express as px
 import pandas as pd
 from dash_bootstrap_templates import load_figure_template
-import time
 
 # define app
 dbc_css = (
@@ -21,6 +20,8 @@ app = dash.Dash(__name__,
                             "content": "width=device-width"}],
                 suppress_callback_exceptions=True)
 load_figure_template("COSMO")
+
+
 
 
 # create connect to database
@@ -60,17 +61,20 @@ df = pd.read_sql_query(
 dn = pd.read_sql_query(
     "SELECT strftime('%H',time) as hour , Min(device_name) AS device_name , date, strftime('%d-%m-%Y','now') as date_now, strftime('%H','now') as hour_now FROM messages WHERE (date = date_now AND hour<=hour_now) OR (date < date_now) GROUP BY device_name",
     db)
-dz = pd.read_sql_query("SELECT Min(device_name) AS device_name, (date || ' ' || time) as Times, humid, temp, salt  FROM messages WHERE Times >= strftime('%Y-%m-%d %H', datetime('now', '-15 minutes')) GROUP BY device_name", db)
-cursor2.execute(
-    "CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state INTEGER, prediction INTEGER, datetime TEXT)")
+dz = pd.read_sql_query("SELECT Min(device_name) AS device_name, (date || ' ' || time) as Times, humid, temp, soil  FROM messages WHERE Times >= strftime('%Y-%m-%d %H', datetime('now', '-15 minutes')) GROUP BY device_name", db)
+cursor2.execute("CREATE TABLE IF NOT EXISTS controls (control_type TEXT, pump_state INTEGER, prediction INTEGER, datetimes TEXT)")
 conn.commit()
 
 
-dml1 = pd.read_sql_query(
-    "SELECT * FROM controls ORDER BY datetime DESC LIMIT 10", conn)
-FigTest = px.line(dml1, x='datetime', y=[
-                  'pump_state', 'prediction'], title='ML chart')
-FigTest.update_layout(hovermode="x unified")
+dml1 = pd.read_sql_query("SELECT * FROM controls ORDER BY datetimes DESC LIMIT 10", conn)
+dmlWasted = pd.read_sql_query("WITH pos_with_end(pump_state, prediction, datetimes, end) AS (SELECT pump_state, prediction, datetimes, lead(datetimes, 1, datetime(datetimes, 'start of year', '+1 year')) OVER (ORDER BY datetimes) FROM controls) SELECT datetimes as date, round((strftime('%s', end) - strftime('%s', datetimes)) / 60.0, 0) AS 'wasted/needed water' FROM pos_with_end WHERE  pump_state==1 AND prediction==0 ", conn)
+dmlNeeded = pd.read_sql_query("WITH pos_with_end(pump_state, prediction, datetimes, end) AS (SELECT pump_state, prediction, datetimes, lead(datetimes, 1, datetime(datetimes, 'start of year', '+1 year')) OVER (ORDER BY datetimes) FROM controls) SELECT datetimes as date, (0 - round((strftime('%s', end) - strftime('%s', datetimes)) / 60.0, 0)) AS 'wasted/needed water' FROM pos_with_end WHERE  pump_state==0 AND prediction==1 ", conn)
+dmlGood = pd.read_sql_query("SELECT datetimes as date, (pump_state-prediction) AS 'wasted/needed water' FROM controls WHERE  pump_state == prediction", conn)
+dmlAll = [dmlWasted, dmlNeeded, dmlGood]
+resultDml = pd.concat(dmlAll)
+resultDml = resultDml.sort_values(by="date")
+FigML = px.line(resultDml, x='date', y=['wasted/needed water'], title='ML chart')
+FigML.update_layout(hovermode="x unified")
 type_control = 'null'
 
 db.close()
@@ -98,14 +102,15 @@ def predict():
 
     # load the data
 
-    test_data = pd.read_sql_query(
-        "SELECT * FROM messages ORDER BY date desc , time DESC LIMIT 1", conn)
+    test_data = pd.read_sql_query("SELECT * FROM messages ORDER BY date desc , time DESC LIMIT 1", conn)
     # select the features from the external data
     conn.close()
     X_test = test_data[['salt', 'soil', 'temp', 'humid']]
     # predictions on the data
     predictions = knn.predict(X_test)
-    return predictions[0]
+    return predictions[0];
+
+
 
 
 # method get average for temp/humid/salt last 10 min
@@ -117,9 +122,9 @@ def get_record(mesure):
     if (mesure == "temp"):
         cursor.execute(
             "SELECT ROUND(AVG(temp), 2) FROM messages WHERE (date || ' ' || time) >= strftime('%Y-%m-%d %H', datetime('now', '-10 minutes'))")
-    elif (mesure == "salt"):
+    elif (mesure == "soil"):
         cursor.execute(
-            "SELECT ROUND(AVG(salt), 2) FROM messages WHERE date = (date || ' ' || time) >= strftime('%Y-%m-%d %H', datetime('now', '-10 minutes'))")
+            "SELECT ROUND(AVG(soil), 2) FROM messages WHERE (date || ' ' || time) >= strftime('%Y-%m-%d %H', datetime('now', '-10 minutes'))")
     elif (mesure == "humid"):
         cursor.execute(
             "SELECT ROUND(AVG(humid), 2) FROM messages WHERE (date || ' ' || time) >= strftime('%Y-%m-%d %H', datetime('now', '-10 minutes'))")
@@ -131,18 +136,14 @@ def get_record(mesure):
     db.close()
     return (mesureN[0][0])
 
-
 def ml_status(needed):
     conn = sqlite3.connect('databases/pump.db')
     cursor2 = conn.cursor()
     difference_time = cursor2.execute(
-        "SELECT ROUND((JULIANDAY(datetime('now')) - JULIANDAY(datetime)) * 24 * 60) AS difference FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
-    type_now = cursor2.execute(
-        "SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
-    pump_now = cursor2.execute(
-        "SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
-    prediction_now = cursor2.execute(
-        "SELECT prediction FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+        "SELECT ROUND((JULIANDAY(datetime('now')) - JULIANDAY(datetimes)) * 24 * 60) AS difference FROM controls ORDER BY datetimes DESC LIMIT 1").fetchall()
+    type_now = cursor2.execute("SELECT control_type FROM controls ORDER BY datetimes DESC LIMIT 1").fetchall()
+    pump_now = cursor2.execute("SELECT pump_state FROM controls ORDER BY datetimes DESC LIMIT 1").fetchall()
+    prediction_now = cursor2.execute("SELECT prediction FROM controls ORDER BY datetimes DESC LIMIT 1").fetchall()
     conn.close()
     if needed == 'need':
         if type_now[0][0] == 'Auto':
@@ -168,43 +169,42 @@ def ml_status(needed):
                     needed = 'Turn on pump!'
     return needed
 
-
 ml_card = dbc.Card(
-    [
-        dbc.CardHeader(html.H5("Current status", className="text-center")),
-        dbc.CardBody([
-            html.H5(ml_status('need'), className="text-center"),
-        ]),
-        dbc.CardFooter([
-            html.H5(ml_status('advice'), className="text-center"),
-        ]),
-    ],
-    color="secondary", inverse=True
-)
+        [
+            dbc.CardHeader(html.H5("Current status", className="text-center")),
+            dbc.CardBody([
+                html.H5(ml_status('need'), className="text-center"),
+            ]),
+            dbc.CardFooter([
+                html.H5(ml_status('advice'), className="text-center"),
+            ]),
+        ],
+        color="secondary", inverse=True
+    )
 
 
 # cards for average last 10 min
 
 
 offc_humid = dbc.Button("Click here", color="light",
-                        className="d-block mx-auto", id='button_humid'),\
-    html.Div([
-        dbc.Offcanvas(
-            dash_table.DataTable(
-                id='table-deviceName-humid',
-                data=dz.to_dict('records'),
-                columns=[
-                    {'id': 'device_name', 'name': 'Device Name'},
-                    {'id': 'Times', 'name': 'Time'},
-                    {'id': 'humid', 'name': 'Humidity'},
-                ],
-                sort_action='native',
-                style_as_list_view=True,
-                style_cell={
-                    'padding': '5px',
-                    'textAlign': 'center'
-                },
-                style_header={
+                           className="d-block mx-auto", id='button_humid'),\
+                html.Div([
+                    dbc.Offcanvas(
+                        dash_table.DataTable(
+                            id='table-deviceName-humid',
+                            data=dz.to_dict('records'),
+                            columns=[
+                                {'id': 'device_name', 'name': 'Device Name'},
+                                {'id': 'Times', 'name': 'Time'},
+                                {'id': 'humid', 'name': 'Humidity'},
+                            ],
+                            sort_action='native',
+                            style_as_list_view=True,
+                            style_cell={
+                                'padding': '5px',
+                                'textAlign': 'center'
+                            },
+                            style_header={
                     'color': '#2373cc',
                     'background': '#e9f2fc',
                     'fontWeight': 'bold',
@@ -218,77 +218,75 @@ offc_humid = dbc.Button("Click here", color="light",
         )])
 
 humidity_card = dbc.Card(
-    [
-        dbc.CardHeader(html.H5("Humidity", className="text-center")),
-        dbc.CardBody(
-            [html.H2(str(get_record("humid")) + "%", className="text-center"), ]),
-        dbc.CardFooter(offc_humid),
-    ],
-    color="primary", inverse=True
-)
+        [
+            dbc.CardHeader(html.H5("Humidity", className="text-center")),
+            dbc.CardBody([html.H2(str(get_record("humid")) + "%", className="text-center"), ]),
+            dbc.CardFooter(offc_humid),
+        ],
+        color="primary", inverse=True
+    )
 
 
-offc_salt = dbc.Button("Click here", color="light",
-                       className="d-block mx-auto", id='button_salt'),\
-    html.Div([
-        dbc.Offcanvas(
-            dash_table.DataTable(
-                id='table-deviceName-salt',
-                data=dz.to_dict('records'),
-                columns=[
-                    {'id': 'device_name', 'name': 'Device Name'},
-                    {'id': 'Times', 'name': 'Time'},
-                    {'id': 'salt', 'name': 'Salinity'},
-                ],
-                sort_action='native',
-                style_as_list_view=True,
-                style_cell={
-                    'padding': '5px',
-                    'textAlign': 'center'
-                },
-                style_header={
+offc_soil = dbc.Button("Click here", color="light",
+                           className="d-block mx-auto", id='button_salt'),\
+                html.Div([
+                    dbc.Offcanvas(
+                        dash_table.DataTable(
+                            id='table-deviceName-soil',
+                            data=dz.to_dict('records'),
+                            columns=[
+                                {'id': 'device_name', 'name': 'Device Name'},
+                                {'id': 'Times', 'name': 'Time'},
+                                {'id': 'soil', 'name': 'Soil moisture'},
+                            ],
+                            sort_action='native',
+                            style_as_list_view=True,
+                            style_cell={
+                                'padding': '5px',
+                                'textAlign': 'center'
+                            },
+                            style_header={
                     'color': '#2373cc',
                     'background': '#e9f2fc',
                     'fontWeight': 'bold',
                     'textAlign': 'center',
                 },
             ),
-            id="offc_salty",
+            id="offc_soily",
             scrollable=True,
-            title="All salinity readings last 15 minutes",
+            title="All soil moisture readings last 15 minutes",
             is_open=False,
         )])
 
-salinity_card = dbc.Card(
-    [
-        dbc.CardHeader(html.H5("Soil Salinity", className="text-center")),
-        dbc.CardBody([html.H2(str(get_record("salt")) +
-                              "µS/cm", className="text-center"), ]),
-        dbc.CardFooter(offc_salt),
-    ],
-    color="success", inverse=True
-)
+soil_card = dbc.Card(
+        [
+            dbc.CardHeader(html.H5("Soil Moisture", className="text-center")),
+            dbc.CardBody([html.H2(str(get_record("soil")) + "µS/cm", className="text-center"), ]),
+            dbc.CardFooter(offc_soil),
+        ],
+        color="success", inverse=True
+    )
 
 
 offc_temp = dbc.Button("Click here", color="light",
-                       className="d-block mx-auto", id='button_temp'),\
-    html.Div([
-        dbc.Offcanvas(
-            dash_table.DataTable(
-                id='table-deviceName-temp',
-                data=dz.to_dict('records'),
-                columns=[
-                    {'id': 'device_name', 'name': 'Device Name'},
-                    {'id': 'Times', 'name': 'Time'},
-                    {'id': 'temp', 'name': 'Temperature'},
-                ],
-                sort_action='native',
-                style_as_list_view=True,
-                style_cell={
-                    'padding': '5px',
-                    'textAlign': 'center'
-                },
-                style_header={
+                           className="d-block mx-auto", id='button_temp'),\
+                html.Div([
+                    dbc.Offcanvas(
+                        dash_table.DataTable(
+                            id='table-deviceName-temp',
+                            data=dz.to_dict('records'),
+                            columns=[
+                                {'id': 'device_name', 'name': 'Device Name'},
+                                {'id': 'Times', 'name': 'Time'},
+                                {'id': 'temp', 'name': 'Temperature'},
+                            ],
+                            sort_action='native',
+                            style_as_list_view=True,
+                            style_cell={
+                                'padding': '5px',
+                                'textAlign': 'center'
+                            },
+                            style_header={
                     'color': '#2373cc',
                     'background': '#e9f2fc',
                     'fontWeight': 'bold',
@@ -302,105 +300,98 @@ offc_temp = dbc.Button("Click here", color="light",
         )])
 
 temp_card = dbc.Card(
-    [
-        dbc.CardHeader(html.H5("Temperature", className="text-center")),
-        dbc.CardBody(
-            [html.H2(str(get_record("temp")) + "°C", className="text-center"), ]),
-        dbc.CardFooter(offc_temp),
-    ],
-    color="danger", inverse=True
-)
-
-
-# define devices deactivated / update category devices / control water pump
-accordion = html.Div(
-    dbc.Accordion(
         [
-            dbc.AccordionItem(
-                [
-                    dash_table.DataTable(
-                        id='devices-deactivated',
-                        data=dn.to_dict('records'),
-                        columns=[
-                            {'id': 'device_name', 'name': 'Mac Address Devices'},
-                        ],
-                        style_cell={
-                            'padding': '5px',
-                            'textAlign': 'center'
-                        },
-                        style_header={
-                            'color': '#2373cc',
-                            'background': '#e9f2fc',
-                            'fontWeight': 'bold',
-                            'textAlign': 'center'
-                        },
-                    )
-                ],
-                title="Devices Deactivated",
-            ),
-            dbc.AccordionItem(
-                [
-                    html.P("Select Device Name"),
-                    dcc.Dropdown(id='dd_deviceName',
-                                 options=[{'label': i, 'value': i}
-                                          for i in df['macAddress'].unique()],
-                                 value='Not Selected', clearable=False),
-                    html.Br(),
-                    dcc.Input(id='input_deviceName', type='text',
-                              placeholder='Name for the device'),
-                    html.Br(),
-                    html.Br(),
-                    html.P("Select Category"),
-                    dcc.Dropdown(id='dd_category', options=['Not Selected', 'Sikkry', 'Khalas'], value='Not Selected',
-                                 clearable=False, searchable=False),
-                    html.Br(),
-                    dcc.ConfirmDialog(
-                        id='confirm-danger',
-                        message='You want change catagory?',
-                    ),
-                    html.Div(id='dd-output-container')
-                ],
-                title="Update Category Devices",
-            ),
-            dbc.AccordionItem(
-                [
-                    html.Div(
-                        children=[
-                            html.Div([
-                                html.Label(['Choice control pump'],
-                                           style={'fontWeight': 'bold'}),
-
-                                dcc.RadioItems(
-                                    id='pump-control',
-                                    options=[
-                                        {'label': ' Auto', 'value': 'auto'},
-                                        {'label': ' ON', 'value': 'on'},
-                                        {'label': ' OFF', 'value': 'off'}
-                                    ],
-                                    value=type_control,
-                                    labelStyle={'display': 'block'}
-                                )
-                            ]
-                            ),
-                        ],
-                    )
-                ],
-                title="Control Pump",
-            ),
+            dbc.CardHeader(html.H5("Temperature", className="text-center")),
+            dbc.CardBody([html.H2(str(get_record("temp")) + "°C", className="text-center"), ]),
+            dbc.CardFooter(offc_temp),
         ],
-    ),
-    className="dbc dbc-row-selectable"
-)
+        color="danger", inverse=True
+    )
+
+# define devices deactivated / update category devices / control water pump cards
+deactivated_card = dbc.Card(
+        [
+            dbc.CardHeader(html.H5("Devices Deactivated", className="text-center")),
+            dbc.CardBody([
+                dash_table.DataTable(
+                    id='devices-deactivated',
+                    data=dn.to_dict('records'),
+                    columns=[
+                        {'id': 'device_name', 'name': 'Mac Address Devices'},
+                    ],
+                    style_cell={
+                        'padding': '5px',
+                        'textAlign': 'center'
+                    },
+                    style_header={
+                        'color': '#2373cc',
+                        'background': '#e9f2fc',
+                        'fontWeight': 'bold',
+                        'textAlign': 'center'
+                    },
+                ),
+            ]),
+        ],
+    )
+
+updateDevices_card = dbc.Card(
+        [
+            dbc.CardHeader(html.H5("Update Category Devices", className="text-center")),
+            dbc.CardBody([
+                html.P("Select Device Name"),
+                dcc.Dropdown(id='dd_deviceName',
+                             options=[{'label': i, 'value': i}
+                                      for i in df['macAddress'].unique()],
+                             value='Not Selected', clearable=False),
+                html.Br(),
+                dcc.Input(id='input_deviceName'
+                          , type='text'
+                          , placeholder='Name for the device'),
+                html.Br(),
+                html.Br(),
+                html.P("Select Category"),
+                dcc.Dropdown(id='dd_category', options=['Not Selected', 'Sikkry', 'Khalas'], value='Not Selected',
+                             clearable=False, searchable=False),
+                html.Br(),
+                dcc.ConfirmDialog(
+                    id='confirm-danger',
+                    message='You want change catagory?',
+                ),
+                html.Div(id='dd-output-container')
+            ]),
+        ],
+    )
+
+controlPump_card = dbc.Card(
+        [
+            dbc.CardHeader(html.H5("Control Pump", className="text-center")),
+            dbc.CardBody([
+                    html.Label(['Choice control pump'],style={'fontWeight': 'bold'}),
+                    dcc.RadioItems(
+                        id='pump-control',
+                        options=[
+                            {'label': ' Auto', 'value': 'auto'},
+                            {'label': ' ON', 'value': 'on'},
+                            {'label': ' OFF', 'value': 'off'}
+                        ],
+                        value=type_control,
+                        labelStyle={'display': 'block'}
+                    )
+            ]),
+        ],
+    )
+
 
 graphRow1 = dbc.Row([dbc.Col(id='ml_card', children=[ml_card]),
                      dbc.Col(id='humidity_card', children=[humidity_card]),
                      dbc.Col(id='temp_card', children=[temp_card]),
-                     dbc.Col(id='salinity_card', children=[salinity_card]), ], justify="center")
-graphRow2 = dbc.Row([dbc.Col(dcc.Graph(id="graphHumid", figure=FigHumid), md=6),
-                     dbc.Col(dcc.Graph(id="graphSalt", figure=FigTest), md=6)])
-graphRow3 = dbc.Row(
-    [dbc.Col(dcc.Graph(id="graphTemp", figure=FigTemp), md=6), dbc.Col(id='list_group', children=[accordion], md=6)])
-
+                     dbc.Col(id='soil_card', children=[soil_card]), ], justify="center")
+graphRow2 = dbc.Row([dbc.Col(dcc.Graph(id="graphML", figure=FigML))])
+graphRow3 = dbc.Row([dbc.Col(dcc.Graph(id="graphTemp", figure=FigTemp), md=6),
+                     dbc.Col(dcc.Graph(id="graphHumid", figure=FigHumid), md=6)])
+graphRow4 = dbc.Row([dbc.Col(id='deactivated_card', children=[deactivated_card]),
+                     dbc.Col(id='updateDevices_card', children=[updateDevices_card]),
+                     dbc.Col(id='controlPump_card', children=[controlPump_card]), ], justify="center")
 # define navbar
 nav = dbc.NavbarSimple(
     children=[
@@ -455,6 +446,8 @@ app.layout = html.Div([
     html.Br(),
     graphRow3,
     html.Br(),
+    graphRow4,
+    html.Br(),
 ])
 
 
@@ -463,22 +456,22 @@ app.layout = html.Div([
     Input("button_humid", "n_clicks"),
     State("offc_humidy", "is_open"),
 )
+
 def toggle_offcanvas_Humid(n2, is_open):
     if n2:
         return not is_open
     return is_open
 
-
 @app.callback(
-    Output("offc_salty", "is_open"),
+    Output("offc_soily", "is_open"),
     Input("button_salt", "n_clicks"),
-    State("offc_salty", "is_open"),
+    State("offc_soily", "is_open"),
 )
+
 def toggle_offcanvas_Salt(n2, is_open):
     if n2:
         return not is_open
     return is_open
-
 
 @app.callback(
     Output("offc_temp-scrollable", "is_open"),
@@ -491,16 +484,15 @@ def toggle_offcanvas_Temp(n2, is_open):
     return is_open
 
 
+
 @app.callback(
     Output('pump-control', 'value'),
     [Input('pump-control', 'value')])
 def record_control_data(valueControl):
     conn = sqlite3.connect('databases/pump.db')
     cursor = conn.cursor()
-    result0 = cursor.execute(
-        "SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
-    result1 = cursor.execute(
-        "SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchall()
+    result0 = cursor.execute("SELECT control_type FROM controls ORDER BY datetimes DESC LIMIT 1").fetchall()
+    result1 = cursor.execute("SELECT pump_state FROM controls ORDER BY datetimes DESC LIMIT 1").fetchall()
     prediction = int(predict())
     rowCount = len(result0)
     if prediction == 0:
@@ -509,29 +501,24 @@ def record_control_data(valueControl):
         predictionAuto = 0
     if valueControl == 'auto':
         if rowCount == 0 or result0 != 'auto':
-            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetime) VALUES (?,?,?,?)",
-                           ('Auto', prediction, prediction, datetime.datetime.now()))
+            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Auto', prediction, prediction, datetime.datetime.now()))
             print("pump now it auto")
     elif valueControl == 'on' or valueControl == 'off':
-        if valueControl == 'off' != result1:
-            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetime) VALUES (?,?,?,?)",
-                           ('Manually', 0, prediction, datetime.datetime.now()))
+        if valueControl =='off' != result1:
+            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Manually', 0, prediction, datetime.datetime.now()))
             print("pump now is off")
-        elif valueControl == 'on' != result1:
-            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetime) VALUES (?,?,?,?)",
-                           ('Manually', 1, prediction, datetime.datetime.now()))
+        elif valueControl =='on' != result1:
+            cursor.execute("INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Manually', 1, prediction, datetime.datetime.now()))
             print("pump now is on")
 
     conn.commit()
 
     # get the latest value from the controls table
-    result2 = cursor.execute(
-        "SELECT control_type FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+    result2 = cursor.execute("SELECT control_type FROM controls ORDER BY datetimes DESC LIMIT 1").fetchone()
     if result2[0] == 'Auto':
-        type_control = 'auto'
+        type_control='auto'
     elif result2[0] == 'Manually':
-        result3 = cursor.execute(
-            "SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+        result3 = cursor.execute("SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
         if result3[0] == 1:
             type_control = 'on'
         else:
@@ -589,52 +576,6 @@ def update_output(valueName, valueInName, valueCate, submit_n_clicks):
             db.close()
             return f'You have select category {valueCate} for device {valueName}'
 
-
-def automation():
-    df = pd.read_csv('labeled_dataset_soil-U.csv')
-
-    # select the features and target for the model
-    X = df[['salt', 'soil', 'temp', 'humid']]
-    y = df['Gn']
-
-    knn = KNeighborsClassifier(n_neighbors=5)
-    knn.fit(X, y)
-
-    conn_messages = sqlite3.connect('databases/messages.db')
-
-    conn_pump = sqlite3.connect('databases/pump.db')
-
-    # اخر ريكورد
-    test_data = pd.read_sql_query(
-        "SELECT * FROM messages ORDER BY date desc , time DESC LIMIT 1", conn_messages)
-
-    X_test = test_data[['salt', 'soil', 'temp', 'humid']]
-
-    # prediction 0 == turn the pump off , 1 turn the pump on
-    # i had to use [0] to extract the result from the array . eaitehr this way or replace the if condetion below to if prediction[0] == etc .
-    prediction = knn.predict(X_test)[0]
-    print(prediction)
-
-    # شيك اخر حالة للبمب
-    last_control = pd.read_sql_query(
-        "SELECT * FROM controls ORDER BY datetime desc  LIMIT 1", conn_pump)
-
-    if last_control.iloc[0]['control_type'] == 'Auto':
-        if prediction == 0:
-            conn_pump.execute(
-                "INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', 'off', datetime.datetime.now()))
-        else:
-            conn_pump.execute(
-                "INSERT INTO controls (control_type, pump_state,datetime) VALUES (?,?,?)", ('Auto', 'on', datetime.datetime.now()))
-
-    # احفظ التغيرات
-    conn_pump.commit()
-
-
-# run every 10 minutes
-while(True):
-    automation()
-    time.sleep(600)
 
 # Run the app on all port server
 if __name__ == '__main__':
