@@ -69,11 +69,13 @@ conn.commit()
 
 dmlWasted = pd.read_sql_query("WITH pos_with_end(pump_state, prediction, datetimes, end) AS (SELECT pump_state, prediction, datetimes, lead(datetimes, 1, datetime(datetimes, 'start of year', '+1 year')) OVER (ORDER BY datetimes) FROM controls) SELECT datetimes as Times, round((strftime('%s', end) - strftime('%s', datetimes)) / 60.0, 0) AS 'wasted&needed water liter/min' FROM pos_with_end WHERE  pump_state==1 AND prediction==0 ", conn)
 dmlNeeded = pd.read_sql_query("WITH pos_with_end(pump_state, prediction, datetimes, end) AS (SELECT pump_state, prediction, datetimes, lead(datetimes, 1, datetime(datetimes, 'start of year', '+1 year')) OVER (ORDER BY datetimes) FROM controls) SELECT datetimes as Times, (0 - round((strftime('%s', end) - strftime('%s', datetimes)) / 60.0, 0)) AS 'wasted&needed water liter/min' FROM pos_with_end WHERE  pump_state==0 AND prediction==1 ", conn)
-dmlGood = pd.read_sql_query("SELECT datetimes as Times, (pump_state-prediction) AS 'wasted&needed water liter/min' FROM controls WHERE  pump_state == prediction", conn)
+dmlGood = pd.read_sql_query(
+    "SELECT datetimes as Times, (pump_state-prediction) AS 'wasted&needed water liter/min' FROM controls WHERE  pump_state == prediction", conn)
 dmlAll = [dmlWasted, dmlNeeded, dmlGood]
 resultDml = pd.concat(dmlAll)
 resultDml = resultDml.sort_values(by="Times")
-FigML = px.line(resultDml, x='Times', y='wasted&needed water liter/min', title='ML chart')
+FigML = px.line(resultDml, x='Times',
+                y='wasted&needed water liter/min', title='ML chart')
 FigML.update_layout(hovermode="x unified")
 type_control = 'null'
 
@@ -568,20 +570,21 @@ def automation(nullValue):
 
     # prediction 0 == turn the pump off , 1 turn the pump on
     # i had to use [0] to extract the result from the array . eaitehr this way or replace the if condetion below to if prediction[0] == etc .
-    prediction = knn.predict(X_test)[0]
-    print(prediction)# just for checing purposes
+    prediction_obj = knn.predict(X_test)[0]
+    print(prediction_obj, "Hello")  # just for checing purposes
 
+    Holder = int(prediction_obj)
     # Check the last state of the pump
     last_control = pd.read_sql_query(
         "SELECT * FROM controls ORDER BY datetimes desc  LIMIT 1", conn_pump)
 
     if last_control.iloc[0]['control_type'] == 'Auto':
-        if prediction == 0:
+        if Holder == 0:
             conn_pump.execute(
-                "INSERT INTO controls (control_type, pump_state,datetimes) VALUES (?,?,?)", ('Auto', 'off', datetime.datetime.now()))
+                "INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Auto', 'off',  Holder, datetime.datetime.now()))
         else:
             conn_pump.execute(
-                "INSERT INTO controls (control_type, pump_state,datetimes) VALUES (?,?,?)", ('Auto', 'on', datetime.datetime.now()))
+                "INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Auto', 'on',  Holder, datetime.datetime.now()))
 
     # Save changes
     conn_pump.commit()
@@ -592,6 +595,7 @@ def job():
     while(True):
         automation("null")
         time.sleep(600)
+
 
 t = threading.Thread(target=job)
 t.start()
