@@ -533,7 +533,7 @@ def record_control_data(valueControl):
         type_control = 'auto'
     elif result2[0] == 'Manually':
         result3 = cursor.execute(
-            "SELECT pump_state FROM controls ORDER BY datetime DESC LIMIT 1").fetchone()
+            "SELECT pump_state FROM controls ORDER BY datetimes DESC LIMIT 1").fetchone()
         if result3[0] == 1:
             type_control = 'on'
         else:
