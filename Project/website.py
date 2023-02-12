@@ -67,17 +67,13 @@ cursor2.execute(
 conn.commit()
 
 
-dml1 = pd.read_sql_query(
-    "SELECT * FROM controls ORDER BY datetimes DESC LIMIT 10", conn)
-dmlWasted = pd.read_sql_query("WITH pos_with_end(pump_state, prediction, datetimes, end) AS (SELECT pump_state, prediction, datetimes, lead(datetimes, 1, datetime(datetimes, 'start of year', '+1 year')) OVER (ORDER BY datetimes) FROM controls) SELECT datetimes as date, round((strftime('%s', end) - strftime('%s', datetimes)) / 60.0, 0) AS 'wasted/needed water' FROM pos_with_end WHERE  pump_state==1 AND prediction==0 ", conn)
-dmlNeeded = pd.read_sql_query("WITH pos_with_end(pump_state, prediction, datetimes, end) AS (SELECT pump_state, prediction, datetimes, lead(datetimes, 1, datetime(datetimes, 'start of year', '+1 year')) OVER (ORDER BY datetimes) FROM controls) SELECT datetimes as date, (0 - round((strftime('%s', end) - strftime('%s', datetimes)) / 60.0, 0)) AS 'wasted/needed water' FROM pos_with_end WHERE  pump_state==0 AND prediction==1 ", conn)
-dmlGood = pd.read_sql_query(
-    "SELECT datetimes as date, (pump_state-prediction) AS 'wasted/needed water' FROM controls WHERE  pump_state == prediction", conn)
+dmlWasted = pd.read_sql_query("WITH pos_with_end(pump_state, prediction, datetimes, end) AS (SELECT pump_state, prediction, datetimes, lead(datetimes, 1, datetime(datetimes, 'start of year', '+1 year')) OVER (ORDER BY datetimes) FROM controls) SELECT datetimes as Times, round((strftime('%s', end) - strftime('%s', datetimes)) / 60.0, 0) AS 'wasted&needed water liter/min' FROM pos_with_end WHERE  pump_state==1 AND prediction==0 ", conn)
+dmlNeeded = pd.read_sql_query("WITH pos_with_end(pump_state, prediction, datetimes, end) AS (SELECT pump_state, prediction, datetimes, lead(datetimes, 1, datetime(datetimes, 'start of year', '+1 year')) OVER (ORDER BY datetimes) FROM controls) SELECT datetimes as Times, (0 - round((strftime('%s', end) - strftime('%s', datetimes)) / 60.0, 0)) AS 'wasted&needed water liter/min' FROM pos_with_end WHERE  pump_state==0 AND prediction==1 ", conn)
+dmlGood = pd.read_sql_query("SELECT datetimes as Times, (pump_state-prediction) AS 'wasted&needed water liter/min' FROM controls WHERE  pump_state == prediction", conn)
 dmlAll = [dmlWasted, dmlNeeded, dmlGood]
 resultDml = pd.concat(dmlAll)
-resultDml = resultDml.sort_values(by="date")
-FigML = px.line(resultDml, x='date', y=[
-                'wasted/needed water'], title='ML chart')
+resultDml = resultDml.sort_values(by="Times")
+FigML = px.line(resultDml, x='Times', y='wasted&needed water liter/min', title='ML chart')
 FigML.update_layout(hovermode="x unified")
 type_control = 'null'
 
@@ -550,7 +546,7 @@ def record_control_data(valueControl):
 # Automation function :
 
 
-def automation():
+def automation(nullValue):
     df = pd.read_csv('labeled_dataset_soil-U.csv')
 
     # select the features and target for the model
@@ -594,7 +590,7 @@ def automation():
 # To run automation every 10 minutes
 def job():
     while(True):
-        automation()
+        automation("null")
         time.sleep(600)
 
 t = threading.Thread(target=job)
