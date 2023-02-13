@@ -581,10 +581,10 @@ def automation(nullValue):
     if last_control.iloc[0]['control_type'] == 'Auto':
         if Holder == 0:
             conn_pump.execute(
-                "INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Auto', 'off',  Holder, datetime.datetime.now()))
+                "INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Auto', 0,  Holder, datetime.datetime.now()))
         else:
             conn_pump.execute(
-                "INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Auto', 'on',  Holder, datetime.datetime.now()))
+                "INSERT INTO controls (control_type, pump_state, prediction, datetimes) VALUES (?,?,?,?)", ('Auto', 1,  Holder, datetime.datetime.now()))
 
     # Save changes
     conn_pump.commit()
