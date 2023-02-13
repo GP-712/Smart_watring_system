@@ -31,28 +31,16 @@ After edit, we need to restart the service to implement the modifications:
 sudo systemctl restart mosquitto
 ```
 
-### 2- Git files ###
-install wget for download Project files:
-```bash
-sudo yum install wget -y
-```
-install unzip for extract files from zip:
-```bash
-sudo yum install unzip -y
-```
-unzip file:
-```bash
-sudo unzip Project.zip
-```
-edit "/Project/mqttListener.py" line 18 (change ip server): 
+### 2- Configure and start service ###
+Download and decompress the `Project.zip` file first, then edit  `/Project/mqttListener.py` line 18 (change `ip_server` only): 
 ```bash
 client.connect("ip_server", 1883)
 ```
-install "systemd" for create service to start project every run server:
+install `systemd` for create service to start project every run server:
 ```bash
 sudo yum install -y systemd
 ```
-create file service in "/etc/systemd/system":
+create file service in `/etc/systemd/system`:
 ```bash
 sudo touch /etc/systemd/system/Project.service
 ```
@@ -86,8 +74,6 @@ run the commands for start and enable service:
 sudo systemctl enable Project.service
 sudo systemctl start Project.service
 ```
-
-### 3- Configure and start service ###
 
 ## How to configure sensors
 1. Open Smart_watring_system/Sensor_frameware/Frimware/ directory in VS code.
