@@ -76,7 +76,7 @@ sudo systemctl start Project.service
 ```
 
 ## How to configure sensors
-1. Open Smart_watring_system/Sensor_frameware/Frimware/ directory in VS code.
+1. Open Smart_watring_system/Resources/Sensor_frameware/Frimware/ directory in VS code.
 2. Connect the sensor to the computer using the type-c port on the sensor.
 3. Open "user-variables.sh" file. 
 4. Then edit the folowing lines : 
