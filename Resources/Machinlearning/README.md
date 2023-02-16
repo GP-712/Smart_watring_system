@@ -8,7 +8,7 @@ This folder contain the model we developed during this project. You can use this
 import joblib
 import 
 
-model = joblib.load('my_model.joblib')
+model = joblib.load('iswasted.joblib')
 ```
 
 ### Step 2: Prepare the data
