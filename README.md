@@ -117,10 +117,15 @@ const char mqttpass[] = ""; //add eventual mqtt password
 
 ## How to use
 
-Here is an explanation of use the project
-- First one 
-- Second one
-
+After cloning the repository :
+```bash 
+cd Smart_watring_system/Project
+```
+Then run the following comand : 
+```python
+python website.py
+```
+Then on your web browser type to "localhost:80"
 ## Prerequisites
 
 - LilyGo T-Higrow (available from AliExpress).
